@@ -1,0 +1,7 @@
+coverage.json
+build
+node_modules
+verification
+contracts
+migrations
+.idea/*
