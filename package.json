@@ -1,11 +1,12 @@
 {
-  "name": "@etherisc/gif",
+  "name": "@etherisc/flightdelay-contracts",
   "version": "1.0.0",
-  "description": "Etherisc Generic Insurance Framework smart contracts",
+  "description": "Etherisc FlightDelay Contracts",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git://github.com/etherisc/GIF.git"
   },
+  "license": "Apache-2.0",
   "settings": {
     "solc": "0.5.12"
   },
@@ -39,6 +40,7 @@
     "update-solc-version": "echo 'Update solc compiler version'; bin/run updateSolcVersion"
   },
   "dependencies": {
+    "@etherisc/gif-contracts": "^1.1.1",
     "@etherisc/gifcli": "^1.2.7",
     "@etherisc/microservice": "^0.6.1-sandbox",
     "@oclif/command": "^1.8.0",

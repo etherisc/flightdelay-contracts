@@ -5,3 +5,4 @@ verification
 contracts
 migrations
 .idea/*
+.env

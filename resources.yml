@@ -9,28 +9,15 @@
 #   Contracts
 #
 contracts:
-  - GIF/Product.sol
-  - GIF/Oracle.sol
-  - GIF/IOracle.sol
-  - GIF/services/IOracleService.sol
-  - GIF/services/IProductService.sol
-  - GIF/shared/RBAC.sol
   - Migrations.sol
-
   - FlightDelayEtheriscOracle.sol
-  - Oracles/FlightRatingsOracle.sol
-  - Oracles/FlightStatusesOracle.sol
-  - Oracles/etheriscOracleAPI.sol
-  - Oracles/strings.sol
-  - Oracles/etheriscAddressResolver.sol
 
 #
 #   Migrations:
 #
 migrations:
   - 01_initial_migration.js
-  - 102_deploy_FlightRatingsOracle.js
-  - 103_deploy_FlightStatusesOracle.js
+  - 101_deploy_FlightDelayEtheriscOracle.js
 
 #
 #   Tests:

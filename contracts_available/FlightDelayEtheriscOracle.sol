@@ -1,6 +1,6 @@
 pragma solidity 0.5.12;
 
-import "./GIF/Product.sol";
+import "@etherisc/gif-contracts/contracts/Product.sol";
 
 contract FlightDelay is Product {
 
