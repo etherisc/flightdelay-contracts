@@ -26,7 +26,7 @@
     "docs": "echo 'Generage documentation'; rimraf ./docs/* && SOLC_ARGS='openzeppelin-solidity=$(pwd)/node_modules/openzeppelin-solidity' solidity-docgen . contracts .",
     "docs-serve": "echo 'Start documentation website'; (cd website; npm start)",
     "exec": "echo 'Execute truffle script'; truffle exec",
-    "lint": "echo 'Lint contracts'; solhint \\\\\\\\\\\\\\\"contracts_available/**/*.sol\\\\\\\\\\\\\\\"",
+    "lint": "echo 'Lint contracts'; solhint \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"contracts/**/*.sol\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"",
     "migrate": "echo 'Deploy contracts'; truffle migrate",
     "migrate:prod": "truffle migrate --verbose-rpc --network ${NETWORK}",
     "migrate:reset": "echo 'Deploy contracts'; truffle migrate --reset",
