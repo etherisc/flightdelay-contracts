@@ -2,19 +2,26 @@ const { info } = require('../io/logger');
 const Gifcli = require('@etherisc/gifcli');
 
 const FlightDelayEtheriscOracle = artifacts.require('FlightDelayEtheriscOracle.sol');
+const InstanceOperatorServiceArtifact = artifacts.require('services/InstanceOperatorService.sol');
 
 
 module.exports = async (deployer) => {
+
   const gif = await Gifcli.connect();
+  const productId = 3;
 
-  const productService = await gif.getArtifact('platform', 'development', 'ProductService');
-  const instanceOperatorService = gif.getArtifact('platform', 'development', 'InstanceOperatorService');
-  console.log(`productService=${productService.address}; instanceOperatorService=${instanceOperatorService.address}`);
+  const productServiceDeployed = await gif.artifact.get('platform', 'development', 'ProductService');
+  const instanceOperatorServiceDeployed = await gif.artifact.get('platform', 'development', 'InstanceOperatorService');
+  const instanceOperatorService = await InstanceOperatorServiceArtifact.at(instanceOperatorServiceDeployed.address)
 
-  await deployer.deploy(FlightDelayEtheriscOracle, productService.address, { gas: 3500000 });
-  const productId = 2;
+  if (!process.env.DRYRUN) {
+    info(`Deploying FlightDelayEtheriscOracle, ProductService=${productServiceDeployed.address}`);
+    await deployer.deploy(FlightDelayEtheriscOracle, productServiceDeployed.address, { gas: 3500000 });
+    info('Approve product');
+    await instanceOperatorService.approveProduct(productId, { gas: 200000 })
+    .on('transactionHash', txHash => info(`transaction hash: ${txHash}\n`));
+  } else {
+    info(`Dry Run: productService = ${productServiceDeployed.address}`);
+  }
 
-  info('Approve product');
-  //await instanceOperator.approveProduct(productId, { gas: 200000 })
-  //  .on('transactionHash', txHash => info(`transaction hash: ${txHash}\n`));
 };

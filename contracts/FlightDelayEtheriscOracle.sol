@@ -1,12 +1,14 @@
 pragma solidity 0.5.12;
 
+import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
 import "@etherisc/gif-contracts/contracts/Product.sol";
 
-contract FlightDelay is Product {
+contract FlightDelayEtheriscOracle is Product {
 
     // Dec 2020. This version is oracle agnostic i.e. it will work with Chainlink, Oraclize, ...
 
-    bytes32 public constant NAME = "FlightDelay";
+    bytes32 public constant NAME = "FlightDelaySokol";
+    bytes32 public constant VERSION = "0.1.0";
 
     event LogRequestFlightStatistics(
         uint256 requestId,
@@ -320,6 +322,9 @@ contract FlightDelay is Product {
         require(_premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
         require(_premium <= MAX_PREMIUM, "ERROR::INVALID_PREMIUM");
         require(_statistics[0] > MIN_OBSERVATIONS, "ERROR::LOW_OBSERVATIONS");
+
+        _weight = 0;
+        _payoutOptions = [0, 0, 0, 0, 0];
 
         for (uint256 i = 1; i < 6; i++) {
             _weight += weightPattern[i] * _statistics[i] * 10000 / _statistics[0];
