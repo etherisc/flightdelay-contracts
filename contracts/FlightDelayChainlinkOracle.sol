@@ -319,7 +319,7 @@ contract FlightDelayChainlink is Product {
         require(_statistics[0] > MIN_OBSERVATIONS, "ERROR::LOW_OBSERVATIONS");
 
         _weight = 0;
-        _payoutOptions = [0, 0, 0, 0, 0];
+        _payoutOptions = [uint256(0), 0, 0, 0, 0];
 
         for (uint256 i = 1; i < 6; i++) {
             _weight += weightPattern[i] * _statistics[i] * 10000 / _statistics[0];
