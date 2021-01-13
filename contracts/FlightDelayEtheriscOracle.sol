@@ -9,6 +9,8 @@ contract FlightDelayEtheriscOracle is Product {
 
     bytes32 public constant NAME = "FlightDelaySokol";
     bytes32 public constant VERSION = "0.1.0";
+    bytes32 public constant XDAI = "XDAI";
+    uint256 public constant ETHERISC_ORACLE_ID = 0;
 
     event LogRequestFlightStatistics(
         uint256 requestId,
@@ -53,11 +55,9 @@ contract FlightDelayEtheriscOracle is Product {
 
     // All amounts expected to be provided in a currency’s smallest unit
     // E.g. 10 EUR = 1000 (1000 cents)
-    uint256 public constant MIN_PREMIUM = 1500;
-    uint256 public constant MAX_PREMIUM = 29000;
-    uint256 public constant MAX_PAYOUT = 150000;
-
-    bytes32[1] public currencies = [bytes32("EUR")];
+    uint256 public constant MIN_PREMIUM =  1500; // USD  15.00
+    uint256 public constant MAX_PREMIUM =  2500; // USD  25.00
+    uint256 public constant MAX_PAYOUT  = 75000; // USD 750.00
 
     // ['observations','late15','late30','late45','cancelled','diverted']
     uint8[6] public weightPattern = [0, 0, 0, 30, 50, 50];
@@ -87,30 +87,23 @@ contract FlightDelayEtheriscOracle is Product {
 
     mapping(uint256 => RequestMetadata) public oracleRequests;
 
-    RequestMetadata[] public actionRequests;
-
     constructor(address _productController)
         public
         Product(_productController, NAME, POLICY_FLOW)
     {}
 
-    function applyForPolicy(
+    function applyForPolicy (
         // domain specific
         bytes32 _carrierFlightNumber,
         bytes32 _departureYearMonthDay,
         uint256 _departureTime,
         uint256 _arrivalTime,
-        // premium
-        uint256 _premium,
-        bytes32 _currency,
-        uint256[] calldata _payoutOptions,
-        // BP
-        bytes32 _bpExternalKey
-    ) external onlySandbox {
+        uint256[] calldata _payoutOptions
+    ) external payable {
         // Validate input parameters
-        require(_premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
-        require(_premium <= MAX_PREMIUM, "ERROR::INVALID_PREMIUM");
-        require(_currency == currencies[0], "ERROR:INVALID_CURRENCY");
+        uint256 premium = msg.value;
+        require(premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
+        require(premium <= MAX_PREMIUM, "ERROR::INVALID_PREMIUM");
         require(
             _arrivalTime > _departureTime,
             "ERROR::INVALID_ARRIVAL/DEPARTURE_TIME"
@@ -124,6 +117,7 @@ contract FlightDelayEtheriscOracle is Product {
             "ERROR::TIME_TO_DEPARTURE_TOO_SMALL"
         );
 
+        bytes32 bpExternalKey = keccak256(msg.sender);
         // Create risk if not exists
         bytes32 riskId = keccak256(
             abi.encodePacked(_carrierFlightNumber, _departureTime, _arrivalTime)
@@ -137,7 +131,7 @@ contract FlightDelayEtheriscOracle is Product {
             risk.arrivalTime = _arrivalTime;
         }
 
-        if (_premium * risk.premiumMultiplier + risk.cumulatedWeightedPremium >= MAX_CUMULATED_WEIGHTED_PREMIUM) {
+        if (premium * risk.premiumMultiplier + risk.cumulatedWeightedPremium >= MAX_CUMULATED_WEIGHTED_PREMIUM) {
             emit LogError("ERROR::CLUSTER_RISK");
             return;
         }
@@ -148,9 +142,9 @@ contract FlightDelayEtheriscOracle is Product {
 
         // Create new application
         uint256 applicationId = _newApplication(
-            _bpExternalKey,
-            _premium,
-            _currency,
+            bpExternalKey,
+            premium,
+            XDAI,
             _payoutOptions
         );
 
@@ -159,7 +153,7 @@ contract FlightDelayEtheriscOracle is Product {
             abi.encode(_carrierFlightNumber),
             "flightStatisticsCallback",
             "FlightRatings",
-            0
+            ETHERISC_ORACLE_ID // Oracle Id
         );
 
         oracleRequests[requestId].applicationId = applicationId;
@@ -229,17 +223,6 @@ contract FlightDelayEtheriscOracle is Product {
 
         risks[riskId].weight = weight;
 
-        // Request fiat payment
-        uint256 requestId = actionRequests.length++;
-        actionRequests[requestId] = RequestMetadata(applicationId, 0, riskId);
-
-        emit LogRequestPayment(requestId, applicationId);
-    }
-
-    function confirmPaymentSuccess(uint256 _requestId) external onlySandbox {
-        uint256 applicationId = actionRequests[_requestId].applicationId;
-        bytes32 riskId = actionRequests[_requestId].riskId;
-
         uint256 policyId = _underwrite(applicationId);
 
         // Request flight statuses
@@ -265,10 +248,6 @@ contract FlightDelayEtheriscOracle is Product {
             risks[riskId].carrierFlightNumber,
             risks[riskId].arrivalTime
         );
-    }
-
-    function confirmPaymentFailure(uint256 _requestId) external onlySandbox {
-        _decline(actionRequests[_requestId].applicationId);
     }
 
     function flightStatusCallback(uint256 _requestId, bytes calldata _response)
@@ -307,11 +286,16 @@ contract FlightDelayEtheriscOracle is Product {
         }
     }
 
-    function confirmPayout(uint256 _payoutId, uint256 _amount)
-        external
-        onlySandbox
-    {
-        _payout(_payoutId, _amount);
+    function resolvePayout(uint256 _policyId, uint256 _payoutAmount) internal {
+        if (_payoutAmount == 0) {
+            _expire(_policyId);
+
+            emit LogPolicyExpired(_policyId);
+        } else {
+            uint256 claimId = _newClaim(_policyId);
+            uint256 payoutId = _confirmClaim(claimId, _payoutAmount);
+            _payout(_payoutId, _payoutAmount);
+        }
     }
 
     function calculatePayouts(uint256 _premium, uint256[6] memory _statistics)
@@ -345,16 +329,4 @@ contract FlightDelayEtheriscOracle is Product {
         }
     }
 
-    function resolvePayout(uint256 _policyId, uint256 _payoutAmount) internal {
-        if (_payoutAmount == 0) {
-            _expire(_policyId);
-
-            emit LogPolicyExpired(_policyId);
-        } else {
-            uint256 claimId = _newClaim(_policyId);
-            uint256 payoutId = _confirmClaim(claimId, _payoutAmount);
-
-            emit LogRequestPayout(_policyId, claimId, payoutId, _payoutAmount);
-        }
-    }
 }

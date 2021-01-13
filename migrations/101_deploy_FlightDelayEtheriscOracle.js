@@ -8,7 +8,7 @@ const InstanceOperatorServiceArtifact = artifacts.require('services/InstanceOper
 module.exports = async (deployer) => {
 
   const gif = await Gifcli.connect();
-  const productId = 4;
+  const productId = 1; // todo: Find out how we can determine this automatically.
 
   const productServiceDeployed = await gif.artifact.get('platform', 'development', 'ProductService');
   const instanceOperatorServiceDeployed = await gif.artifact.get('platform', 'development', 'InstanceOperatorService');
