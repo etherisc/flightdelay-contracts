@@ -1,4 +1,5 @@
-pragma solidity 0.5.12;
+// SPDX-License-Identifier: Apache 2.0
+pragma solidity 0.6.11;
 
 import "@etherisc/gif-contracts/contracts/Product.sol";
 
@@ -224,8 +225,8 @@ contract FlightDelayOraclize is Product {
         risks[riskId].weight = weight;
 
         // Request fiat payment
-        uint256 requestId = actionRequests.length++;
-        actionRequests[requestId] = RequestMetadata(applicationId, 0, riskId);
+        uint256 requestId = actionRequests.length;
+        actionRequests.push(RequestMetadata(applicationId, 0, riskId));
 
         emit LogRequestPayment(requestId, applicationId);
     }

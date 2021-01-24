@@ -8,7 +8,6 @@ const InstanceOperatorServiceArtifact = artifacts.require('services/InstanceOper
 module.exports = async (deployer) => {
 
   const gif = await Gifcli.connect();
-  const productId = 1; // todo: Find out how we can determine this automatically.
 
   const productServiceDeployed = await gif.artifact.get('platform', 'development', 'ProductService');
   const instanceOperatorServiceDeployed = await gif.artifact.get('platform', 'development', 'InstanceOperatorService');
@@ -16,10 +15,14 @@ module.exports = async (deployer) => {
 
   if (!process.env.DRYRUN) {
     info(`Deploying FlightDelayEtheriscOracle, ProductService=${productServiceDeployed.address}`);
-    await deployer.deploy(FlightDelayEtheriscOracle, productServiceDeployed.address, { gas: 3500000 });
-    info('Approve product');
-    await instanceOperatorService.approveProduct(productId, { gas: 200000 })
-    .on('transactionHash', txHash => info(`transaction hash: ${txHash}\n`));
+    const FD = await deployer.deploy(FlightDelayEtheriscOracle, productServiceDeployed.address, { gas: 3500000 });
+    const productId = (await FD.productId.call()).toNumber();
+    info(`Product deployed; productId = ${productId}`);
+    info('Sending artifacts: ');
+    // await gif.artifact.send()
+
+    //await instanceOperatorService.approveProduct(productId, { gas: 200000 })
+    //.on('transactionHash', txHash => info(`transaction hash: ${txHash}\n`));
   } else {
     info(`Dry Run: productService = ${productServiceDeployed.address}`);
   }

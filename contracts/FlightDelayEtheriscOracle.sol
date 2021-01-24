@@ -1,14 +1,18 @@
-pragma solidity 0.5.12;
+// SPDX-License-Identifier: Apache 2.0
+pragma solidity 0.6.11;
 
 import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
 import "@etherisc/gif-contracts/contracts/Product.sol";
+import "./IRiskPool.sol";
 
 contract FlightDelayEtheriscOracle is Product {
 
     // Dec 2020. This version is oracle agnostic i.e. it will work with Chainlink, Oraclize, ...
 
-    bytes32 public constant NAME = "FlightDelaySokol";
-    bytes32 public constant VERSION = "0.1.0";
+    bytes32 public constant NAME = "FlightDelayEtheriscOracle";
+    bytes32 public constant VERSION = "0.1.11";
+
+    IRiskPool RiskPool;
 
     event LogRequestFlightStatistics(
         uint256 requestId,
@@ -53,11 +57,11 @@ contract FlightDelayEtheriscOracle is Product {
 
     // All amounts expected to be provided in a currency’s smallest unit
     // E.g. 10 EUR = 1000 (1000 cents)
-    uint256 public constant MIN_PREMIUM = 1500;
-    uint256 public constant MAX_PREMIUM = 29000;
-    uint256 public constant MAX_PAYOUT = 150000;
+    uint256 public constant MIN_PREMIUM = 15 * 10 ** 18;
+    uint256 public constant MAX_PREMIUM = 25 * 10 ** 18;
+    uint256 public constant MAX_PAYOUT = 750 * 10 ** 18;
 
-    bytes32[1] public currencies = [bytes32("XDAI")];
+    bytes32 public constant XDAI = "xDai";
 
     // ['observations','late15','late30','late45','cancelled','diverted']
     uint8[6] public weightPattern = [0, 0, 0, 30, 50, 50];
@@ -81,6 +85,8 @@ contract FlightDelayEtheriscOracle is Product {
         uint256 applicationId;
         uint256 policyId;
         bytes32 riskId;
+        uint256 premium;
+        bytes32 bpExternalKey;
     }
 
     mapping(bytes32 => Risk) public risks;
@@ -90,10 +96,21 @@ contract FlightDelayEtheriscOracle is Product {
     // RequestMetadata[] public actionRequests;
     mapping(uint256 => address payable) public customers;
 
+    address payable public riskPool;
+
     constructor(address _productController)
     public
     Product(_productController, NAME, POLICY_FLOW)
     {}
+
+    function setRiskPool(address payable _addr) public onlySandbox {
+        require(_addr != address(0x0), "ERROR::ADDRESS_NOT_SPECIFIED");
+        RiskPool = IRiskPool(_addr);
+    }
+
+    function getValue() internal returns(uint256) {
+        return msg.value;
+    }
 
     function applyForPolicy(
     // domain specific
@@ -101,16 +118,15 @@ contract FlightDelayEtheriscOracle is Product {
         bytes32 _departureYearMonthDay,
         uint256 _departureTime,
         uint256 _arrivalTime,
-    // premium
-        uint256 _premium,
-    //  bytes32 _currency,
         uint256[] calldata _payoutOptions
-    // BP
-    //  bytes32 _bpExternalKey
     ) external onlySandbox {
+
+        uint256 premium = getValue();
+        bytes32 bpExternalKey = keccak256(abi.encodePacked(msg.sender));
+
         // Validate input parameters
-        require(_premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
-        require(_premium <= MAX_PREMIUM, "ERROR::INVALID_PREMIUM");
+        require(premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
+        require(premium <= MAX_PREMIUM, "ERROR::INVALID_PREMIUM");
         // require(_currency == currencies[0], "ERROR:INVALID_CURRENCY");
         require(
             _arrivalTime > _departureTime,
@@ -125,7 +141,6 @@ contract FlightDelayEtheriscOracle is Product {
             "ERROR::TIME_TO_DEPARTURE_TOO_SMALL"
         );
 
-        bytes32 _bpExternalKey = keccak256(msg.sender);
         // Create risk if not exists
         bytes32 riskId = keccak256(
             abi.encodePacked(_carrierFlightNumber, _departureTime, _arrivalTime)
@@ -139,22 +154,16 @@ contract FlightDelayEtheriscOracle is Product {
             risk.arrivalTime = _arrivalTime;
         }
 
-        if (_premium * risk.premiumMultiplier + risk.cumulatedWeightedPremium >= MAX_CUMULATED_WEIGHTED_PREMIUM) {
+        if (premium * risk.premiumMultiplier + risk.cumulatedWeightedPremium >= MAX_CUMULATED_WEIGHTED_PREMIUM) {
             emit LogError("ERROR::CLUSTER_RISK");
             return;
         }
 
+        // if this is the first flight, we "block" this risk by setting risk.cumulatedWeightedPremium to
+        // the maximum. Next flight for this risk can only be insured after this one has been underwritten.
         if (risk.cumulatedWeightedPremium == 0) {
             risk.cumulatedWeightedPremium = MAX_CUMULATED_WEIGHTED_PREMIUM;
         }
-
-        // Create new application
-        uint256 applicationId = _newApplication(
-            _bpExternalKey,
-            _premium,
-            _currency,
-            _payoutOptions
-        );
 
         // Request flight ratings
         uint256 requestId = _request(
@@ -164,8 +173,7 @@ contract FlightDelayEtheriscOracle is Product {
             0
         );
 
-        oracleRequests[requestId].applicationId = applicationId;
-        oracleRequests[requestId].riskId = riskId;
+        oracleRequests[requestId] = RequestMetadata(0, 0, riskId, premium, bpExternalKey);
 
         emit LogRequestFlightStatistics(
             requestId,
@@ -179,41 +187,48 @@ contract FlightDelayEtheriscOracle is Product {
         uint256 _requestId,
         bytes calldata _response
     ) external onlyOracle {
+
         // Statistics: ['observations','late15','late30','late45','cancelled','diverted']
         uint256[6] memory _statistics = abi.decode(_response, (uint256[6]));
 
-        uint256 applicationId = oracleRequests[_requestId].applicationId;
+        RequestMetadata memory rMeta = oracleRequests[_requestId];
+        uint256 applicationId;
+        uint256 policyId = rMeta.policyId;
+        bytes32 riskId = rMeta.riskId;
+        uint256 premium = rMeta.premium;
+        bytes32 bpExternalKey = rMeta.bpExternalKey;
+
+        (uint256 weight, uint256[5] memory calculatedPayouts) = calculatePayouts(
+            premium,
+            _statistics
+        );
+
+
+        uint256[] storage dynPayouts;
+        dynPayouts.push(calculatedPayouts[0]);
+        dynPayouts.push(calculatedPayouts[1]);
+        dynPayouts.push(calculatedPayouts[2]);
+        dynPayouts.push(calculatedPayouts[3]);
+        dynPayouts.push(calculatedPayouts[4]);
+        // Create new application
+        applicationId = _newApplication(
+            bpExternalKey,
+            premium,
+            XDAI,
+            dynPayouts
+        );
 
         if (_statistics[0] <= MIN_OBSERVATIONS) {
             _decline(applicationId);
             return;
         }
 
-        uint256 premium = _getPremium(applicationId);
-        uint256[] memory payoutOptions = _getPayoutOptions(applicationId);
-        (uint256 weight, uint256[5] memory calculatedPayouts) = calculatePayouts(
-            premium,
-            _statistics
-        );
-
-        if (payoutOptions.length != calculatedPayouts.length) {
-            emit LogError("ERROR::INVALID_PAYOUT_OPTIONS_COUNT"); // TODO: what happens with the application?
-            return;
-        }
-
         for (uint256 i = 0; i < 5; i++) {
-            if (payoutOptions[i] != calculatedPayouts[i]) {
-                emit LogError("ERROR::INVALID_PAYOUT_OPTION"); // TODO: see above
-                return;
-            }
-
-            if (payoutOptions[i] > MAX_PAYOUT) {
+            if (calculatedPayouts[i] > MAX_PAYOUT) {
                 emit LogError("ERROR::PAYOUT>MAX_PAYOUT"); // TODO: see above
                 return;
             }
         }
-
-        bytes32 riskId = oracleRequests[_requestId].riskId;
 
         if (risks[riskId].premiumMultiplier == 0) {
             // It's the first policy for this risk, we accept any premium
@@ -231,16 +246,9 @@ contract FlightDelayEtheriscOracle is Product {
 
         risks[riskId].weight = weight;
 
-        // Request fiat payment
-        // uint256 requestId = actionRequests.length++;
-        // actionRequests[requestId] = RequestMetadata(applicationId, 0, riskId);
-
-        // emit LogRequestPayment(requestId, applicationId);
-
-        uint256 policyId = _underwrite(applicationId);
+        policyId = _underwrite(applicationId);
 
         customers[policyId] = msg.sender;
-        this.transfer(riskpool, msg.value);
 
 
         // Request flight statuses
@@ -255,21 +263,18 @@ contract FlightDelayEtheriscOracle is Product {
             1
         );
 
-        oracleRequests[requestId] = RequestMetadata(
-            applicationId,
-            policyId,
-            riskId
-        );
+        oracleRequests[requestId] = RequestMetadata(applicationId, policyId, riskId, 0, "");
+
+        // Now everything is prepared
+        address(RiskPool).transfer(premium);
 
         emit LogRequestFlightStatus(
             requestId,
             risks[riskId].carrierFlightNumber,
             risks[riskId].arrivalTime
         );
-    }
 
-    function confirmPaymentFailure(uint256 _requestId) external onlySandbox {
-        _decline(actionRequests[_requestId].applicationId);
+
     }
 
     function flightStatusCallback(uint256 _requestId, bytes calldata _response)
@@ -316,14 +321,12 @@ contract FlightDelayEtheriscOracle is Product {
         } else {
             uint256 claimId = _newClaim(_policyId);
             uint256 payoutId = _confirmClaim(claimId, _payoutAmount);
-            _payout(_payoutId, _payoutAmount);
+            _payout(payoutId, _payoutAmount);
 
             emit LogRequestPayout(_policyId, claimId, payoutId, _payoutAmount);
             // actual payment is performed in the wrapper contract
-            productId = productService.license().getProductId(this); // correct??
-            metadata = productService.policy().policies[productId][policyId].metadata;
-            address customerAddress = customer[metadata.bpExternalKey];
-            riskpool.requestTransfer(customerAddress, payout);
+            address payable customerAddress = customers[_policyId];
+            RiskPool.requestPayment(customerAddress, _payoutAmount);
         }
     }
 
