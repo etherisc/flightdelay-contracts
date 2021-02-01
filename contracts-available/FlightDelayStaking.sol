@@ -1,16 +1,17 @@
-pragma solidity 0.5.12;
+// SPDX-License-Identifier: Apache-2.0
+pragma experimental ABIEncoderV2;
+pragma solidity 0.6.12;
 
-import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
-import "openzeppelin-solidity/math/safeMath.sol";
+import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "./FixedMath.sol";
 
-interface IRewardDistributor {
+interface IRewardDistributor {}
 
-}
+abstract contract DipToken is IERC20 {}
 
-contract FlightDelayRiskPool is Ownable {
-
+contract FlightDelayStaking is Ownable {
     using SafeMath for uint256;
     using FixedMath for uint256;
 
@@ -18,7 +19,7 @@ contract FlightDelayRiskPool is Ownable {
      * This struct keeps the double balance of DIP and stablecoin
      *
      */
-    struct stake {
+    struct Stake {
         uint256 stable;
         uint256 dip;
     }
@@ -32,215 +33,238 @@ contract FlightDelayRiskPool is Ownable {
      * @param _totalStableStake Total amount of stablecoin staked
      *
      */
-    event LogDIPStaked(uint256 _dipStake, uint256 _stableStake, uint256 _totalDipStake, uint256 _totalStableStake);
+    event LogDIPStaked(
+        uint256 _dipStake,
+        uint256 _stableStake,
+        uint256 _totalDipStake,
+        uint256 _totalStableStake
+    );
 
-    /**
-     * This mapping keeps the record of stakers balance.
-     *
-     * @param address Address of staker
-     * @returns stake A stake record representing the staked amount of DIP and stablecoin
-     *
-     */
-    mapping (address => stake) public stakeBalances;
+    uint256 exposureFactor = 40;
+    uint256 collatFactor = 50;
+    uint256 bigNumber = 10**18;
 
-    /**
-     * If an unstake request of a contributor cannot be satisfied immediately, it is queued.
-     * The array stake[] keeps the queue of unprocessed requests.
-     * lastUnprocessedUnstakeRequest points to the last unprocessed element.
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
-     */
-    stake[] unstakeRequests;
-    uint256 lastUnprocessedUnstakeRequest;
-
-    /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
-     */
     bool public isPublicStakable;
+    uint256 public lastUnprocessedUnstakeRequest;
+
+    Stake[] private unstakeRequests;
+    mapping(address => Stake) public stakeBalances;
+
+    uint256 public currentStake; // currentStake represents the current staking values.
+    uint256 public targetStake; // targetStake represents staking values after unstake requests have been processed.
+    // uint256 public totalLockedStake; // the currently locked Stake
+    uint256 public policyCount;
+    FixedUint public stakingRelation;
+
+    IERC20 public dipTokenContract;
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @param _dipContractAddress is DIP token address
      */
-    stake public currentStake; // currentStake represents the current staking values.
-    stake public targetStake; // targetStake represents staking values after unstake requests have been processed.
-    stake public lockedStake; // the currently locked stake
-    fixedUint public stakingRelation;
-
-    /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
-     */
-    IERC20 public DipTokenContract;
-
-    /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
-     */
-    constructor (address _DipContractAddress) {
-        DipTokenContract = DipToken(_DipContractAddress);
-        setStakingRelation(1,1);
+    constructor(address _dipContractAddress) public {
+        dipTokenContract = DipToken(_dipContractAddress);
+        setStakingRelation(1, 1);
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @dev Set staking ratio
+     * @param _relation is the dip token amount
+     * @param _divider is the stable amount
      */
-    function setStakingRelation (uint256 _relation, uint256 _divider) public {
+    function setStakingRelation(uint256 _relation, uint256 _divider) public {
         stakingRelation.val = _relation;
         stakingRelation.div = _divider;
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
+     * @dev Stake stable and dip tokens
+     * @param _stake is the amount of dip token
      *
      */
     function stake(uint256 _stake) public payable {
-
-        stake currentStakersStake = stakeBalances[msg.sender];
-        increaseCurrentStake(_stake);
-        uint256 totalStableStake = currentSingleStake.stable + msg.value;
-        uint256 totalDipStake = currentStake.dip + _stake;
+        Stake memory currentStakersStake = stakeBalances[msg.sender];
+        uint256 totalStableStake = currentStakersStake.stable + msg.value;
+        uint256 totalDipStake = currentStakersStake.dip + _stake;
         uint256 requiredDip = calculateRequiredDip(totalStableStake);
-        require (totalDipStake <= requiredDip, "Stake to high");
-        require (DipTokenContract.transferFrom(msg.sender, this, stake), "DIP could not be staked");
-        stakeBalances[msg.sender] = stake(totalStableStake, totalDipStake);
+        require(totalDipStake <= requiredDip, "Stake to high");
+        require(
+            dipTokenContract.transferFrom(msg.sender, address(this), _stake),
+            "DIP could not be staked"
+        );
+        stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
+        currentStake += msg.value;
 
-        emit LogDIPStaked(stake, msg.value, totalDipStake, totalStableStake);
-
+        emit LogDIPStaked(_stake, msg.value, totalDipStake, totalStableStake);
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @dev calculates required dip token amount from stable token amount. _requiredStake Amount of DIP tokens required.
+     * @param _stableStake is the amount of stable coin
      */
-    function calculateRequiredDip(uint256 _stableStake) public view returns (uint256 _requiredStake) {
-        _requiredStake = fixedMul(_stableStake, stakingRelation);
+    function calculateRequiredDip(uint256 _stableStake)
+        public
+        view
+        returns (uint256 _requiredStake)
+    {
+        _requiredStake = _stableStake.fixedMul(stakingRelation);
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @dev calculates required stable amount from dip token amount.
+     * @param _dipAmount is the amount of dip coin
+     * @return _requiredStable is amount of stable
+     */
+    function calculateRequiredStable(uint256 _dipAmount)
+        public
+        view
+        returns (uint256 _requiredStable)
+    {
+        _requiredStable = _dipAmount.fixedDiv(stakingRelation);
+    }
+
+    /**
+     * @dev get the availabel amount of stable can be unstaked. returns _capacity Amount of DIP tokens required.
      */
     function getCapacity() public view returns (uint256 _capacity) {
-        if (targetStake.stable < lockedStake.stable) {
+        if (targetStake < totalLockedStake()) {
             return 0;
         }
-        return targetStake.stable - lockedStake.stable;
+        return targetStake - totalLockedStake();
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
+     * @dev locks the capacity
+     * @param _capacity is the amount to lock
      *
      */
-    function lockCapacity(uint256 _capacity) public {
-        // add _capacity to lockedStake
-    }
+    function lockCapacity(uint256 _capacity) public {}
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
+     * @dev unlocks the capacity
+     * @param _capacity is the amount to unlock
      *
      */
-    function unlockCapacity(uint256 _capacity) public {
-        // subtract _capacity from lockedStake
-        // process unstakeRequests
-    }
+    function unlockCapacity(uint256 _capacity) public {}
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @dev add two stakes. _result is the added stakes
+     * @param _s1 Stake
+     * @param _s2 Stake
      */
-    function addStake(stake _s1, stake _s2) public pure returns (_stake _result) {
+    function addStake(Stake calldata _s1, Stake calldata _s2)
+        public
+        pure
+        returns (Stake memory _result)
+    {
         _result.dip = _s1.dip + _s2.dip;
         _result.stable = _s1.stable + _s2.stable;
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
-     */
-    function addStake(stake _s1, stake _s2) public pure returns (_stake _result) {
-        _result.dip = _s1.dip + _s2.dip;
-        _result.stable = _s1.stable + _s2.stable;
-    }
-
-    /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
-     *
+     * @dev get Stake of the address
+     * @param staker is the address of the staker
      */
     function getStake(address staker)
-        public view
-        returns (stake _stake)
+        public
+        view
+        returns (Stake memory _stake)
     {
         return stakeBalances[staker];
     }
 
     /**
-     * Calculate the required DIP tokens to stake the requested amount of stable asset
-     * Currently we use a fixed factor e.g. 1.0
-     *
-     * @param _stableStake
-     * @returns _requiredStake Amount of DIP tokens required.
+     * @dev get locked stake for staker
+     * @param _staker staker address
+     * @return _amount locked amount
+     */
+
+    function getLockedStakeFor(address _staker)
+        public
+        view
+        returns (uint256 _amount)
+    {
+        if (currentStake == 0) return 0;
+
+        uint256 stakedDai = stakeBalances[_staker].stable;
+
+        uint256 locked =
+            stakedDai
+                .div(currentStake)
+                .mul(totalLockedStake())
+                .mul(collatFactor)
+                .div(100);
+
+        return locked;
+    }
+
+    /**
+     * @dev get unlocked stake for staker
+     * @param _staker staker address
+     * @return _amount unlocked amount
+     */
+
+    function getUnlockedStakeFor(address _staker)
+        public
+        view
+        returns (uint256 _amount)
+    {
+        Stake memory _stake = stakeBalances[_staker];
+
+        return _stake.stable - getLockedStakeFor(_staker);
+    }
+
+    /**
+     * @dev get maximum exposure
+     * @return _capacity is maximum exposure
+     */
+    function maximumCapacity() public view returns (uint256 _capacity) {
+        return currentStake.div(collatFactor).mul(100);
+    }
+
+    /**
+     * @dev get total locked stakes
+     * @return _amount is total locked stake
+     */
+    function totalLockedStake() public view returns (uint256 _amount) {
+        return
+            policyCount.mul(exposureFactor).mul(10).mul(bigNumber).mul(157).div(
+                160
+            );
+    }
+
+    /**
+     * @dev get available exposure
+     * @return _capacity is available exposure
+     */
+    function availableCapacity() public view returns (uint256 _capacity) {
+        return
+            maximumCapacity() -
+            policyCount.mul(exposureFactor).mul(bigNumber).mul(150).div(800);
+    }
+
+    /**
+     * @dev unstakes specific amount of staking
+     * @param _amount is the dip amount to unstake
      *
      */
-    function unstake(uint256 _stake, uint256 _stable)
-        public
-        returns (bool _success)
-    {
+    function unstake(uint256 _amount) public payable {
+        uint256 unlockedStable = getUnlockedStakeFor(_msgSender());
+        uint256 unlockedDip = calculateRequiredDip(unlockedStable);
+        uint256 requiredStable = calculateRequiredStable(_amount);
+
+        require(_amount <= unlockedDip, "Unstake more than unlocked");
+        require(requiredStable <= unlockedStable, "Unstake more than unlocked");
+
+        dipTokenContract.transfer(_msgSender(), _amount);
+        _msgSender().transfer(requiredStable);
+
+        currentStake = currentStake.sub(requiredStable);
+        Stake memory currentStakersStake = stakeBalances[msg.sender];
+        uint256 totalStableStake =
+            currentStakersStake.stable.sub(requiredStable);
+        uint256 totalDipStake = currentStakersStake.dip.sub(_amount);
+
+        stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
         // t.b.d
         // Unstaking strategy:
         // Assumption: The items in unstakeRequests are ordered in the sequence they have been recorded.
@@ -253,9 +277,5 @@ contract FlightDelayRiskPool is Ownable {
         //   Reduce currentStake and targetStake by this item.
         // DONE
         //
-        return true;
     }
-
-
-
 }
