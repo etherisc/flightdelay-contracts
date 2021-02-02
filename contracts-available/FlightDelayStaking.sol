@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma experimental ABIEncoderV2;
-pragma solidity 0.6.12;
+pragma solidity 0.6.11;
 
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "./FixedMath.sol";
+import "@uniswap/lib/contracts/libraries/FixedPoint.sol";
 
 interface IRewardDistributor {}
 
@@ -13,7 +13,7 @@ abstract contract DipToken is IERC20 {}
 
 contract FlightDelayStaking is Ownable {
     using SafeMath for uint256;
-    using FixedMath for uint256;
+    using FixedPoint for *;
 
     /**
      * This struct keeps the double balance of DIP and stablecoin
@@ -23,6 +23,21 @@ contract FlightDelayStaking is Ownable {
         uint256 stable;
         uint256 dip;
     }
+
+    /**
+     * @dev This struct is to keep the relation of staking
+     */
+    struct StakingRelation {
+        uint256 val;
+        uint256 div;
+    }
+
+    /**
+     * @dev This struct is to keep premium purchases
+     */
+    // struct Premium {
+    //     uint256 expiresAt;
+    // }
 
     /**
      * This event is triggered after a contributor has successfully staked a certain amount of DIP and stablecoin.
@@ -49,12 +64,12 @@ contract FlightDelayStaking is Ownable {
 
     Stake[] private unstakeRequests;
     mapping(address => Stake) public stakeBalances;
+    // mapping(address => Premium) public premiums;
 
     uint256 public currentStake; // currentStake represents the current staking values.
     uint256 public targetStake; // targetStake represents staking values after unstake requests have been processed.
-    // uint256 public totalLockedStake; // the currently locked Stake
-    uint256 public policyCount;
-    FixedUint public stakingRelation;
+    uint256 public lockedStake; // the currently locked Stake
+    StakingRelation public stakingRelation;
 
     IERC20 public dipTokenContract;
 
@@ -71,9 +86,28 @@ contract FlightDelayStaking is Ownable {
      * @param _relation is the dip token amount
      * @param _divider is the stable amount
      */
-    function setStakingRelation(uint256 _relation, uint256 _divider) public {
+    function setStakingRelation(uint256 _relation, uint256 _divider)
+        public
+        onlyOwner
+    {
         stakingRelation.val = _relation;
         stakingRelation.div = _divider;
+    }
+
+    /**
+     * @dev Set staking ratio
+     * @param _exposureFactor is the new exposureFactor
+     */
+    function setExposureFactor(uint256 _exposureFactor) public onlyOwner {
+        exposureFactor = _exposureFactor;
+    }
+
+    /**
+     * @dev Set staking ratio
+     * @param _collatFactor is the new collatFactor
+     */
+    function setCollatFactor(uint256 _collatFactor) public onlyOwner {
+        collatFactor = _collatFactor;
     }
 
     /**
@@ -104,32 +138,12 @@ contract FlightDelayStaking is Ownable {
     function calculateRequiredDip(uint256 _stableStake)
         public
         view
-        returns (uint256 _requiredStake)
+        returns (uint144 _requiredStake)
     {
-        _requiredStake = _stableStake.fixedMul(stakingRelation);
-    }
-
-    /**
-     * @dev calculates required stable amount from dip token amount.
-     * @param _dipAmount is the amount of dip coin
-     * @return _requiredStable is amount of stable
-     */
-    function calculateRequiredStable(uint256 _dipAmount)
-        public
-        view
-        returns (uint256 _requiredStable)
-    {
-        _requiredStable = _dipAmount.fixedDiv(stakingRelation);
-    }
-
-    /**
-     * @dev get the availabel amount of stable can be unstaked. returns _capacity Amount of DIP tokens required.
-     */
-    function getCapacity() public view returns (uint256 _capacity) {
-        if (targetStake < totalLockedStake()) {
-            return 0;
-        }
-        return targetStake - totalLockedStake();
+        _requiredStake = FixedPoint
+            .fraction(stakingRelation.val, stakingRelation.div)
+            .mul(_stableStake)
+            .decode144();
     }
 
     /**
@@ -226,10 +240,7 @@ contract FlightDelayStaking is Ownable {
      * @return _amount is total locked stake
      */
     function totalLockedStake() public view returns (uint256 _amount) {
-        return
-            policyCount.mul(exposureFactor).mul(10).mul(bigNumber).mul(157).div(
-                160
-            );
+        return lockedStake;
     }
 
     /**
@@ -237,45 +248,45 @@ contract FlightDelayStaking is Ownable {
      * @return _capacity is available exposure
      */
     function availableCapacity() public view returns (uint256 _capacity) {
-        return
-            maximumCapacity() -
-            policyCount.mul(exposureFactor).mul(bigNumber).mul(150).div(800);
+        return maximumCapacity() - lockedStake;
     }
 
     /**
      * @dev unstakes specific amount of staking
-     * @param _amount is the dip amount to unstake
+     * @param _stable is the stable amount to unstake
      *
      */
-    function unstake(uint256 _amount) public payable {
+    function unstake(uint256 _stable) public payable {
+        Stake memory _stake = stakeBalances[_msgSender()];
+
+        require(
+            _stake.stable >= _stable,
+            "User staking balance is not enough!"
+        );
+
         uint256 unlockedStable = getUnlockedStakeFor(_msgSender());
-        uint256 unlockedDip = calculateRequiredDip(unlockedStable);
-        uint256 requiredStable = calculateRequiredStable(_amount);
+        uint256 requiredStable = _stable;
 
-        require(_amount <= unlockedDip, "Unstake more than unlocked");
-        require(requiredStable <= unlockedStable, "Unstake more than unlocked");
+        if (requiredStable > unlockedStable) {
+            uint256 remainingStable = _stable.sub(requiredStable);
 
-        dipTokenContract.transfer(_msgSender(), _amount);
+            unstakeRequests.push(
+                Stake(remainingStable, calculateRequiredDip(remainingStable))
+            );
+            requiredStable = unlockedStable;
+        }
+
+        uint256 requiredDip = calculateRequiredDip(requiredStable);
+
+        dipTokenContract.transfer(_msgSender(), requiredDip);
         _msgSender().transfer(requiredStable);
 
         currentStake = currentStake.sub(requiredStable);
         Stake memory currentStakersStake = stakeBalances[msg.sender];
         uint256 totalStableStake =
             currentStakersStake.stable.sub(requiredStable);
-        uint256 totalDipStake = currentStakersStake.dip.sub(_amount);
+        uint256 totalDipStake = currentStakersStake.dip.sub(requiredDip);
 
         stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
-        // t.b.d
-        // Unstaking strategy:
-        // Assumption: The items in unstakeRequests are ordered in the sequence they have been recorded.
-        // Pseudocode:
-        //
-        // Check if unstake request is valid, i.e. the contributor has actually staked that many tokens.
-        // WHILE targetStake > lockedStake DO
-        //   Iterate over unstakeRequests until an item is found which can be satisfied.
-        //   IF none is found: RETURN
-        //   Reduce currentStake and targetStake by this item.
-        // DONE
-        //
     }
 }
