@@ -25,19 +25,13 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev This struct is to keep the relation of staking
-     */
-    struct StakingRelation {
-        uint256 val;
-        uint256 div;
-    }
-
-    /**
      * @dev This struct is to keep premium purchases
      */
-    // struct Premium {
-    //     uint256 expiresAt;
-    // }
+    struct Premium {
+        uint256 expiresAt;
+        address payerAddr;
+        bool isClaimed;
+    }
 
     /**
      * This event is triggered after a contributor has successfully staked a certain amount of DIP and stablecoin.
@@ -55,6 +49,20 @@ contract FlightDelayStaking is Ownable {
         uint256 _totalStableStake
     );
 
+    /**
+     * @dev This event is triggered after a staker has successfully unstaked a certain amount of stablecoin and required dips
+     * @param _stable amount of stables unstaked
+     * @param _dip amount of dips unstaked
+     * @param _curDipStake Current amount of DIP staked
+     * @param _curStableStake Current amount of stablecoin staked
+     */
+    event LogUnstaked(
+        uint256 _stable,
+        uint256 _dip,
+        uint256 _curStableStake,
+        uint256 _curDipStake
+    );
+
     uint256 exposureFactor = 40;
     uint256 collatFactor = 50;
     uint256 bigNumber = 10**18;
@@ -64,12 +72,11 @@ contract FlightDelayStaking is Ownable {
 
     Stake[] private unstakeRequests;
     mapping(address => Stake) public stakeBalances;
-    // mapping(address => Premium) public premiums;
+    Premium[] private premiums;
 
     uint256 public currentStake; // currentStake represents the current staking values.
     uint256 public targetStake; // targetStake represents staking values after unstake requests have been processed.
-    uint256 public lockedStake; // the currently locked Stake
-    StakingRelation public stakingRelation;
+    FixedPoint.uq112x112 public stakingRelation;
 
     IERC20 public dipTokenContract;
 
@@ -90,8 +97,7 @@ contract FlightDelayStaking is Ownable {
         public
         onlyOwner
     {
-        stakingRelation.val = _relation;
-        stakingRelation.div = _divider;
+        stakingRelation = FixedPoint.fraction(_relation, _divider);
     }
 
     /**
@@ -120,7 +126,7 @@ contract FlightDelayStaking is Ownable {
         uint256 totalStableStake = currentStakersStake.stable + msg.value;
         uint256 totalDipStake = currentStakersStake.dip + _stake;
         uint256 requiredDip = calculateRequiredDip(totalStableStake);
-        require(totalDipStake <= requiredDip, "Stake to high");
+        require(totalDipStake == requiredDip, "Stake to not required amount");
         require(
             dipTokenContract.transferFrom(msg.sender, address(this), _stake),
             "DIP could not be staked"
@@ -140,10 +146,7 @@ contract FlightDelayStaking is Ownable {
         view
         returns (uint144 _requiredStake)
     {
-        _requiredStake = FixedPoint
-            .fraction(stakingRelation.val, stakingRelation.div)
-            .mul(_stableStake)
-            .decode144();
+        _requiredStake = stakingRelation.mul(_stableStake).decode144();
     }
 
     /**
@@ -240,7 +243,15 @@ contract FlightDelayStaking is Ownable {
      * @return _amount is total locked stake
      */
     function totalLockedStake() public view returns (uint256 _amount) {
-        return lockedStake;
+        uint256 premiumCount = 0;
+
+        for (uint256 i = 0; i < premiums.length; i += 1) {
+            if (premiums[i].expiresAt <= block.timestamp) {
+                premiumCount = premiumCount.add(1);
+            }
+        }
+
+        return FixedPoint.fraction(98125, 100000).mul(premiumCount).decode144();
     }
 
     /**
@@ -248,7 +259,7 @@ contract FlightDelayStaking is Ownable {
      * @return _capacity is available exposure
      */
     function availableCapacity() public view returns (uint256 _capacity) {
-        return maximumCapacity() - lockedStake;
+        return maximumCapacity() - totalLockedStake();
     }
 
     /**
@@ -288,5 +299,12 @@ contract FlightDelayStaking is Ownable {
         uint256 totalDipStake = currentStakersStake.dip.sub(requiredDip);
 
         stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
+
+        emit LogUnstaked(
+            requiredStable,
+            requiredDip,
+            totalStableStake,
+            totalDipStake
+        );
     }
 }
