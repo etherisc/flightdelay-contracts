@@ -34,6 +34,15 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
+     * @dev This struct is to keep unstake requests
+     */
+    struct UnstakeRequest {
+        uint256 amount;
+        uint256 fullfilled;
+        bool paidOut;
+    }
+
+    /**
      * This event is triggered after a contributor has successfully staked a certain amount of DIP and stablecoin.
      *
      * @param _dipStake Amount of DIP staked, needs to be higher then calculateRequiredDip(_stableStake)
@@ -70,12 +79,15 @@ contract FlightDelayStaking is Ownable {
     bool public isPublicStakable;
     uint256 public lastUnprocessedUnstakeRequest;
 
-    Stake[] private unstakeRequests;
+    mapping(address => UnstakeRequest[]) private unstakeRequests;
+    mapping(address => uint256) private currentStake;
+    mapping(address => uint256) private targetStake;
     mapping(address => Stake) public stakeBalances;
+
     Premium[] private premiums;
 
-    uint256 public currentStake; // currentStake represents the current staking values.
-    uint256 public targetStake; // targetStake represents staking values after unstake requests have been processed.
+    uint256 public totalCurrentStake; // currentStake represents the current staking values.
+    uint256 public totalTargetStake; // targetStake represents staking values after unstake requests have been processed.
     FixedPoint.uq112x112 public stakingRelation;
 
     IERC20 public dipTokenContract;
@@ -117,27 +129,6 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev Stake stable and dip tokens
-     * @param _stake is the amount of dip token
-     *
-     */
-    function stake(uint256 _stake) public payable {
-        Stake memory currentStakersStake = stakeBalances[msg.sender];
-        uint256 totalStableStake = currentStakersStake.stable + msg.value;
-        uint256 totalDipStake = currentStakersStake.dip + _stake;
-        uint256 requiredDip = calculateRequiredDip(totalStableStake);
-        require(totalDipStake == requiredDip, "Stake to not required amount");
-        require(
-            dipTokenContract.transferFrom(msg.sender, address(this), _stake),
-            "DIP could not be staked"
-        );
-        stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
-        currentStake += msg.value;
-
-        emit LogDIPStaked(_stake, msg.value, totalDipStake, totalStableStake);
-    }
-
-    /**
      * @dev calculates required dip token amount from stable token amount. _requiredStake Amount of DIP tokens required.
      * @param _stableStake is the amount of stable coin
      */
@@ -164,20 +155,6 @@ contract FlightDelayStaking is Ownable {
     function unlockCapacity(uint256 _capacity) public {}
 
     /**
-     * @dev add two stakes. _result is the added stakes
-     * @param _s1 Stake
-     * @param _s2 Stake
-     */
-    function addStake(Stake calldata _s1, Stake calldata _s2)
-        public
-        pure
-        returns (Stake memory _result)
-    {
-        _result.dip = _s1.dip + _s2.dip;
-        _result.stable = _s1.stable + _s2.stable;
-    }
-
-    /**
      * @dev get Stake of the address
      * @param staker is the address of the staker
      */
@@ -200,13 +177,13 @@ contract FlightDelayStaking is Ownable {
         view
         returns (uint256 _amount)
     {
-        if (currentStake == 0) return 0;
+        if (totalCurrentStake == 0) return 0;
 
         uint256 stakedDai = stakeBalances[_staker].stable;
 
         uint256 locked =
             stakedDai
-                .div(currentStake)
+                .div(totalCurrentStake)
                 .mul(totalLockedStake())
                 .mul(collatFactor)
                 .div(100);
@@ -235,7 +212,7 @@ contract FlightDelayStaking is Ownable {
      * @return _capacity is maximum exposure
      */
     function maximumCapacity() public view returns (uint256 _capacity) {
-        return currentStake.div(collatFactor).mul(100);
+        return totalCurrentStake.div(collatFactor).mul(100);
     }
 
     /**
@@ -263,6 +240,34 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
+     * @dev Stake stable and dip tokens
+     * @param _stake is the amount of dip token
+     *
+     */
+    function stake(uint256 _stake) public payable {
+        Stake memory currentStakersStake = stakeBalances[_msgSender()];
+        uint256 totalStableStake = currentStakersStake.stable + msg.value;
+        uint256 totalDipStake = currentStakersStake.dip + _stake;
+        uint256 requiredDip = calculateRequiredDip(totalStableStake);
+        require(
+            unstakeRequests[_msgSender()].length == 0,
+            "Unstake request queue is not empty"
+        );
+        require(totalDipStake == requiredDip, "Stake to not required amount");
+        require(
+            dipTokenContract.transferFrom(_msgSender(), address(this), _stake),
+            "DIP could not be staked"
+        );
+        stakeBalances[_msgSender()] = Stake(totalStableStake, totalDipStake);
+        totalCurrentStake = totalTargetStake.add(msg.value);
+        totalTargetStake = totalTargetStake.add(msg.value);
+        currentStake[_msgSender()] = currentStake[_msgSender()].add(msg.value);
+        targetStake[_msgSender()] = targetStake[_msgSender()].add(msg.value);
+
+        emit LogDIPStaked(_stake, msg.value, totalDipStake, totalStableStake);
+    }
+
+    /**
      * @dev unstakes specific amount of staking
      * @param _stable is the stable amount to unstake
      *
@@ -281,8 +286,11 @@ contract FlightDelayStaking is Ownable {
         if (requiredStable > unlockedStable) {
             uint256 remainingStable = _stable.sub(requiredStable);
 
-            unstakeRequests.push(
-                Stake(remainingStable, calculateRequiredDip(remainingStable))
+            unstakeRequests[_msgSender()].push(
+                UnstakeRequest(remainingStable, 0, false)
+            );
+            targetStake[_msgSender()] = targetStake[_msgSender()].sub(
+                remainingStable
             );
             requiredStable = unlockedStable;
         }
@@ -292,13 +300,23 @@ contract FlightDelayStaking is Ownable {
         dipTokenContract.transfer(_msgSender(), requiredDip);
         _msgSender().transfer(requiredStable);
 
-        currentStake = currentStake.sub(requiredStable);
-        Stake memory currentStakersStake = stakeBalances[msg.sender];
+        totalCurrentStake = totalCurrentStake.sub(requiredStable);
+        totalTargetStake = totalTargetStake.sub(requiredStable);
+
+        currentStake[_msgSender()] = currentStake[_msgSender()].sub(
+            requiredStable
+        );
+        targetStake[_msgSender()] = targetStake[_msgSender()].sub(
+            requiredStable
+        );
+
+        Stake memory currentStakersStake = stakeBalances[_msgSender()];
+
         uint256 totalStableStake =
             currentStakersStake.stable.sub(requiredStable);
         uint256 totalDipStake = currentStakersStake.dip.sub(requiredDip);
 
-        stakeBalances[msg.sender] = Stake(totalStableStake, totalDipStake);
+        stakeBalances[_msgSender()] = Stake(totalStableStake, totalDipStake);
 
         emit LogUnstaked(
             requiredStable,
@@ -306,5 +324,33 @@ contract FlightDelayStaking is Ownable {
             totalStableStake,
             totalDipStake
         );
+    }
+
+    /**
+     * @dev reverts the latest unstake request
+     */
+    function revertLastRequest() public {
+        require(
+            unstakeRequests[_msgSender()].length > 0,
+            "No pending requests"
+        );
+
+        // TODO: need some actions
+    }
+
+    /**
+     * @dev reverts the latest unstake request
+     */
+    function revertAllRequests() public {
+        require(
+            unstakeRequests[_msgSender()].length > 0,
+            "No pending requests"
+        );
+
+        delete unstakeRequests[_msgSender()];
+
+        // TODO: need some actions
+
+        targetStake[_msgSender()] = currentStake[_msgSender()];
     }
 }
