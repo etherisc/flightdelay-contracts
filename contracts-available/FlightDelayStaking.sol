@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma experimental ABIEncoderV2;
 pragma solidity 0.6.11;
 
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
@@ -25,7 +24,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev This struct is to keep premium purchases
+     * @notice This struct is to keep premium purchases
      */
     struct Premium {
         uint256 expiresAt;
@@ -34,11 +33,11 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev This struct is to keep unstake requests
+     * @notice This struct is to keep unstake requests
      */
     struct UnstakeRequest {
         uint256 amount;
-        uint256 fullfilled;
+        uint256 fullFilled;
         bool paidOut;
     }
 
@@ -59,7 +58,7 @@ contract FlightDelayStaking is Ownable {
     );
 
     /**
-     * @dev This event is triggered after a staker has successfully unstaked a certain amount of stablecoin and required dips
+     * @notice This event is triggered after a staker has successfully unstaked a certain amount of stablecoin and required dips
      * @param _stable amount of stables unstaked
      * @param _dip amount of dips unstaked
      * @param _curDipStake Current amount of DIP staked
@@ -74,7 +73,7 @@ contract FlightDelayStaking is Ownable {
 
     uint256 exposureFactor = 40;
     uint256 collatFactor = 50;
-    uint256 bigNumber = 10**18;
+    uint256 policyFee = 10 * 10**18;
 
     bool public isPublicStakable;
     uint256 public lastUnprocessedUnstakeRequest;
@@ -101,7 +100,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev Set staking ratio
+     * @notice Set staking ratio
      * @param _relation is the dip token amount
      * @param _divider is the stable amount
      */
@@ -113,7 +112,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev Set staking ratio
+     * @notice Set staking ratio
      * @param _exposureFactor is the new exposureFactor
      */
     function setExposureFactor(uint256 _exposureFactor) public onlyOwner {
@@ -121,7 +120,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev Set staking ratio
+     * @notice Set staking ratio
      * @param _collatFactor is the new collatFactor
      */
     function setCollatFactor(uint256 _collatFactor) public onlyOwner {
@@ -129,7 +128,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev calculates required dip token amount from stable token amount. _requiredStake Amount of DIP tokens required.
+     * @notice calculates required dip token amount from stable token amount. _requiredStake Amount of DIP tokens required.
      * @param _stableStake is the amount of stable coin
      */
     function calculateRequiredDip(uint256 _stableStake)
@@ -141,33 +140,29 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev locks the capacity
+     * @notice locks the capacity
      * @param _capacity is the amount to lock
      *
      */
     function lockCapacity(uint256 _capacity) public {}
 
     /**
-     * @dev unlocks the capacity
+     * @notice unlocks the capacity
      * @param _capacity is the amount to unlock
      *
      */
     function unlockCapacity(uint256 _capacity) public {}
 
     /**
-     * @dev get Stake of the address
+     * @notice get Stake of the address
      * @param staker is the address of the staker
      */
-    function getStake(address staker)
-        public
-        view
-        returns (Stake memory _stake)
-    {
-        return stakeBalances[staker];
+    function getStake(address staker) public view returns (uint256, uint256) {
+        return (stakeBalances[staker].stable, stakeBalances[staker].dip);
     }
 
     /**
-     * @dev get locked stake for staker
+     * @notice get locked stake for staker
      * @param _staker staker address
      * @return _amount locked amount
      */
@@ -192,7 +187,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev get unlocked stake for staker
+     * @notice get unlocked stake for staker
      * @param _staker staker address
      * @return _amount unlocked amount
      */
@@ -208,7 +203,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev get maximum exposure
+     * @notice get maximum exposure
      * @return _capacity is maximum exposure
      */
     function maximumCapacity() public view returns (uint256 _capacity) {
@@ -216,7 +211,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev get total locked stakes
+     * @notice get total locked stakes
      * @return _amount is total locked stake
      */
     function totalLockedStake() public view returns (uint256 _amount) {
@@ -232,7 +227,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev get available exposure
+     * @notice get available exposure
      * @return _capacity is available exposure
      */
     function availableCapacity() public view returns (uint256 _capacity) {
@@ -240,7 +235,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev Stake stable and dip tokens
+     * @notice Stake stable and dip tokens
      * @param _stake is the amount of dip token
      *
      */
@@ -268,7 +263,7 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev unstakes specific amount of staking
+     * @notice unstakes specific amount of staking
      * @param _stable is the stable amount to unstake
      *
      */
@@ -327,19 +322,28 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
-     * @dev reverts the latest unstake request
+     * @notice reverts the latest unstake request
      */
     function revertLastRequest() public {
-        require(
-            unstakeRequests[_msgSender()].length > 0,
-            "No pending requests"
+        UnstakeRequest[] storage callerRequests = unstakeRequests[_msgSender()];
+        require(callerRequests.length > 0, "No pending requests");
+
+        uint256 lastIdx = callerRequests.length.sub(1);
+        uint256 remainingRequest =
+            callerRequests[lastIdx].amount.sub(
+                callerRequests[lastIdx].fullFilled
+            );
+
+        totalTargetStake = totalTargetStake.add(remainingRequest);
+        targetStake[_msgSender()] = targetStake[_msgSender()].add(
+            remainingRequest
         );
 
-        // TODO: need some actions
+        delete callerRequests[lastIdx];
     }
 
     /**
-     * @dev reverts the latest unstake request
+     * @notice reverts the latest unstake request
      */
     function revertAllRequests() public {
         require(
@@ -349,8 +353,16 @@ contract FlightDelayStaking is Ownable {
 
         delete unstakeRequests[_msgSender()];
 
-        // TODO: need some actions
-
+        uint256 remainingRequest =
+            currentStake[_msgSender()].sub(targetStake[_msgSender()]);
         targetStake[_msgSender()] = currentStake[_msgSender()];
+        totalTargetStake = totalTargetStake.add(remainingRequest);
+    }
+
+    /**
+     * @notice receive premium fee (when policy is sold)
+     */
+    function receivePremium() public payable {
+        require(msg.value == policyFee, "Not enough policy fee");
     }
 }
