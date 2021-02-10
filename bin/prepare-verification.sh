@@ -8,3 +8,4 @@ function flatten {
 }
 
 flatten ./contracts/FlightDelayEtheriscOracle.sol ./verification/FlightDelayEtheriscOracle.txt
+flatten ./contracts/FlightDelayMockup.sol ./verification/FlightDelayMockup.txt

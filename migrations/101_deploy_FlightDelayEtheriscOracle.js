@@ -1,7 +1,8 @@
 const { info } = require('../io/logger');
 const Gifcli = require('@etherisc/gifcli');
 
-const FlightDelayEtheriscOracle = artifacts.require('FlightDelayEtheriscOracle.sol');
+// const FlightDelayEtheriscOracle = artifacts.require('FlightDelayEtheriscOracle.sol');
+const FlightDelayEtheriscOracle = artifacts.require('FlightDelayMockup.sol');
 const InstanceOperatorServiceArtifact = artifacts.require('services/InstanceOperatorService.sol');
 
 
@@ -11,7 +12,7 @@ module.exports = async (deployer) => {
 
   const productServiceDeployed = await gif.artifact.get('platform', 'development', 'ProductService');
   const instanceOperatorServiceDeployed = await gif.artifact.get('platform', 'development', 'InstanceOperatorService');
-  const instanceOperatorService = await InstanceOperatorServiceArtifact.at(instanceOperatorServiceDeployed.address)
+  // const instanceOperatorService = await InstanceOperatorServiceArtifact.at(instanceOperatorServiceDeployed.address)
 
   if (!process.env.DRYRUN) {
     info(`Deploying FlightDelayEtheriscOracle, ProductService=${productServiceDeployed.address}`);

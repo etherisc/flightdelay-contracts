@@ -119,7 +119,7 @@ contract FlightDelayEtheriscOracle is Product {
         uint256 _departureTime,
         uint256 _arrivalTime,
         uint256[] calldata _payoutOptions
-    ) external onlySandbox {
+    ) external payable {
 
         uint256 premium = getValue();
         bytes32 bpExternalKey = keccak256(abi.encodePacked(msg.sender));

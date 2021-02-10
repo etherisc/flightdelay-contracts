@@ -79,6 +79,8 @@ contract FlightDelayStaking is Ownable {
     uint256 public lastUnprocessedUnstakeRequest;
 
     mapping(address => UnstakeRequest[]) private unstakeRequests;
+    address[] private unstakeQueue;
+
     mapping(address => uint256) private currentStake;
     mapping(address => uint256) private targetStake;
     mapping(address => Stake) public stakeBalances;
@@ -105,8 +107,8 @@ contract FlightDelayStaking is Ownable {
      * @param _divider is the stable amount
      */
     function setStakingRelation(uint256 _relation, uint256 _divider)
-        public
-        onlyOwner
+    public
+    onlyOwner
     {
         stakingRelation = FixedPoint.fraction(_relation, _divider);
     }
@@ -132,9 +134,9 @@ contract FlightDelayStaking is Ownable {
      * @param _stableStake is the amount of stable coin
      */
     function calculateRequiredDip(uint256 _stableStake)
-        public
-        view
-        returns (uint144 _requiredStake)
+    public
+    view
+    returns (uint144 _requiredStake)
     {
         _requiredStake = stakingRelation.mul(_stableStake).decode144();
     }
@@ -168,20 +170,20 @@ contract FlightDelayStaking is Ownable {
      */
 
     function getLockedStakeFor(address _staker)
-        public
-        view
-        returns (uint256 _amount)
+    public
+    view
+    returns (uint256 _amount)
     {
         if (totalCurrentStake == 0) return 0;
 
         uint256 stakedDai = stakeBalances[_staker].stable;
 
         uint256 locked =
-            stakedDai
-                .div(totalCurrentStake)
-                .mul(totalLockedStake())
-                .mul(collatFactor)
-                .div(100);
+        stakedDai
+        .div(totalCurrentStake)
+        .mul(totalLockedStake())
+        .mul(collatFactor)
+        .div(100);
 
         return locked;
     }
@@ -193,9 +195,9 @@ contract FlightDelayStaking is Ownable {
      */
 
     function getUnlockedStakeFor(address _staker)
-        public
-        view
-        returns (uint256 _amount)
+    public
+    view
+    returns (uint256 _amount)
     {
         Stake memory _stake = stakeBalances[_staker];
 
@@ -284,6 +286,8 @@ contract FlightDelayStaking is Ownable {
             unstakeRequests[_msgSender()].push(
                 UnstakeRequest(remainingStable, 0, false)
             );
+            unstakeQueue.push(_msgSender());
+
             targetStake[_msgSender()] = targetStake[_msgSender()].sub(
                 remainingStable
             );
@@ -308,7 +312,7 @@ contract FlightDelayStaking is Ownable {
         Stake memory currentStakersStake = stakeBalances[_msgSender()];
 
         uint256 totalStableStake =
-            currentStakersStake.stable.sub(requiredStable);
+        currentStakersStake.stable.sub(requiredStable);
         uint256 totalDipStake = currentStakersStake.dip.sub(requiredDip);
 
         stakeBalances[_msgSender()] = Stake(totalStableStake, totalDipStake);
@@ -322,6 +326,44 @@ contract FlightDelayStaking is Ownable {
     }
 
     /**
+     * @notice removes a request of staker
+     * @param _addr is the address of the request owner
+     */
+    function removeRequest(address _addr) internal {
+        uint256 _index = unstakeQueue.length - 1;
+
+        for (; _index >= 0; _index -= 1) {
+            if (unstakeQueue[_index] == _addr) break;
+        }
+
+        for (uint256 i = _index; i < unstakeQueue.length - 1; i += 1) {
+            unstakeQueue[i] = unstakeQueue[i + 1];
+        }
+
+        unstakeQueue.pop();
+    }
+
+    /**
+     * @notice removes all requests of staker
+     * @param _addr is the address of the request owner
+     */
+    function removeAllRequests(address _addr) internal {
+        for (uint256 j = 0; j < unstakeRequests[_addr].length; j += 1) {
+            uint256 _index = unstakeQueue.length - 1;
+
+            for (; _index >= 0; _index -= 1) {
+                if (unstakeQueue[_index] == _addr) break;
+            }
+
+            for (uint256 i = _index; i < unstakeQueue.length - 1; i += 1) {
+                unstakeQueue[i] = unstakeQueue[i + 1];
+            }
+
+            unstakeQueue.pop();
+        }
+    }
+
+    /**
      * @notice reverts the latest unstake request
      */
     function revertLastRequest() public {
@@ -330,16 +372,17 @@ contract FlightDelayStaking is Ownable {
 
         uint256 lastIdx = callerRequests.length.sub(1);
         uint256 remainingRequest =
-            callerRequests[lastIdx].amount.sub(
-                callerRequests[lastIdx].fullFilled
-            );
+        callerRequests[lastIdx].amount.sub(
+            callerRequests[lastIdx].fullFilled
+        );
 
         totalTargetStake = totalTargetStake.add(remainingRequest);
         targetStake[_msgSender()] = targetStake[_msgSender()].add(
             remainingRequest
         );
 
-        delete callerRequests[lastIdx];
+        removeRequest(_msgSender());
+        callerRequests.pop();
     }
 
     /**
@@ -351,10 +394,11 @@ contract FlightDelayStaking is Ownable {
             "No pending requests"
         );
 
+        removeAllRequests(_msgSender());
         delete unstakeRequests[_msgSender()];
 
         uint256 remainingRequest =
-            currentStake[_msgSender()].sub(targetStake[_msgSender()]);
+        currentStake[_msgSender()].sub(targetStake[_msgSender()]);
         targetStake[_msgSender()] = currentStake[_msgSender()];
         totalTargetStake = totalTargetStake.add(remainingRequest);
     }
