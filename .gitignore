@@ -4,3 +4,7 @@ node_modules
 verification
 .idea/*
 .env
+
+#Hardhat files
+cache
+artifacts
