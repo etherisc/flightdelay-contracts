@@ -4,3 +4,4 @@ node_modules
 verification
 .idea/*
 .env
+.vscode
