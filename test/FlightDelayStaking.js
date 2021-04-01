@@ -1,17 +1,23 @@
 // const { expect } = require("chai");
 const FlightDelayStaking = artifacts.require("FlightDelayStaking");
-const mockDipJson = require("../abis/MockDip.json");
+const MockDip = artifacts.require("MockDip");
 
 contract("FlightDelayStaking", async accounts => {
   const [owner] = accounts;
-  const DIPTokenLocal = "0xD2f3b9ac26F296f9e843769ea0204FdF9E32347c";
 
   let flightDelayStaking;
-  let dipToken;
+  let mockDip;
 
   beforeEach(async function() {
-    dipToken = new web3.eth.Contract(mockDipJson.abi, DIPTokenLocal);
-    flightDelayStaking = await FlightDelayStaking.new(DIPTokenLocal);
+    mockDip = await MockDip.new(
+      "Mock Dip",
+      "MDIP",
+      web3.utils.toWei("100000", "ether")
+    );
+
+    console.log("MockDip is deployed at", mockDip.address);
+
+    flightDelayStaking = await FlightDelayStaking.new(mockDip.address);
 
     await flightDelayStaking.setStakingRelation(10, 1);
     await flightDelayStaking.setExposureFactor(10);
@@ -27,32 +33,38 @@ contract("FlightDelayStaking", async accounts => {
       web3.utils.toWei("1", "ether")
     );
 
-    const ownerDipAmount = new web3.utils.BN(
-      await dipToken.methods.balanceOf(owner).call()
-    );
+    const ownerDipAmount = new web3.utils.BN(await mockDip.balanceOf(owner));
 
-    await dipToken.methods
-      .approve(flightDelayStaking.address, ownerDipAmount)
-      .send({ from: owner });
+    await mockDip.approve(flightDelayStaking.address, ownerDipAmount, {
+      from: owner
+    });
 
     await flightDelayStaking.stake(requiredDips, {
       value: web3.utils.toWei("1", "ether")
     });
 
     expect(await web3.eth.getBalance(flightDelayStaking.address)).to.equal(
-      web3.utils.toWei("1", "ether")
+      web3.utils.toWei("1", "ether"),
+      "Contract eth balance is not correct after staking"
     );
 
-    expect(await dipToken.methods.balanceOf(owner).call()).to.equal(
-      ownerDipAmount.sub(requiredDips).toString()
+    console.log(ownerDipAmount.toString());
+
+    expect((await mockDip.balanceOf(owner)).toString()).to.equal(
+      ownerDipAmount.sub(requiredDips).toString(),
+      "Owner dip balance is not correct after staking"
     );
 
     expect(
-      await dipToken.methods.balanceOf(flightDelayStaking.address).call()
-    ).to.equal(requiredDips.toString());
+      (await mockDip.balanceOf(flightDelayStaking.address)).toString()
+    ).to.equal(
+      requiredDips.toString(),
+      "Contract dip balance is not correct after staking"
+    );
 
     expect((await flightDelayStaking.getStake(owner))[1].toString()).to.equal(
-      requiredDips.toString()
+      requiredDips.toString(),
+      "Total stake of owner is not correct"
     );
   });
 
@@ -61,13 +73,11 @@ contract("FlightDelayStaking", async accounts => {
       web3.utils.toWei("1", "ether")
     );
 
-    const ownerDipAmount = new web3.utils.BN(
-      await dipToken.methods.balanceOf(owner).call()
-    );
+    const ownerDipAmount = new web3.utils.BN(await mockDip.balanceOf(owner));
 
-    await dipToken.methods
-      .approve(flightDelayStaking.address, ownerDipAmount)
-      .send({ from: owner });
+    await mockDip.approve(flightDelayStaking.address, ownerDipAmount, {
+      from: owner
+    });
 
     await flightDelayStaking.stake(requiredDips, {
       value: web3.utils.toWei("1", "ether")
