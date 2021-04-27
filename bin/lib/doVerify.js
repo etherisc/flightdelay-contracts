@@ -23,8 +23,7 @@ const checkThenVerify = async (contract) => {
  */
 const doVerify = async () => {
   const contracts = [
-    'CLFlightRatingsOracle',
-    'CLFlightStatusesOracle'
+    'FlightDelayChainLink'
   ]
 
   const res = []
