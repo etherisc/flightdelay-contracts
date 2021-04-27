@@ -15,8 +15,8 @@ module.exports = {
 
     development: {
       provider: () => new HDWalletProvider(hdWalletConfig),
-      host: 'wss://xdai.poanetwork.dev',
-      port: 443,
+      host: process.env.TRUFFLE_HOST,
+      port: process.env.TRUFFLE_PORT,
       network_id: 100,
       gas: process.env.TRUFFLE_GAS,
       gasPrice: process.env.TRUFFLE_GASPRICE,
@@ -26,12 +26,12 @@ module.exports = {
 
     xdai: {
       provider: () => new HDWalletProvider(hdWalletConfig),
-      host: 'wss://xdai-rpc.etherisc.com',
-      port: 443,
+      host: process.env.TRUFFLE_HOST,
+      port: process.env.TRUFFLE_PORT,
       network_id: 100,
       gas: 6600000,
       gasPrice: 2000000000,
-      websockets: true,
+      websockets: process.env.TRUFFLE_WEBSOCKETS,
       skipDryRun: true,
       networkCheckTimeout: 999999
     }
