@@ -12,7 +12,7 @@ module.exports = async (deployer, networks, accounts) => {
 
   const { address: productServiceAddress } = await gif.artifact.get('platform', 'development', 'ProductService')
 
-  const FlightDelay = await deployer.deploy(FlightDelayChainlink, productServiceAddress, { gas: 3500000 })
+  const FlightDelay = await deployer.deploy(FlightDelayChainlink, productServiceAddress)
   const productId = (await FlightDelay.productId.call()).toNumber()
 
   const { abi: iosAbi, address: iosAddress } = await gif.artifact.get('platform', 'development', 'InstanceOperatorService')
