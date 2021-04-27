@@ -54,5 +54,8 @@ module.exports = {
         evmVersion: 'petersburg' // -> constantinople
       }
     }
-  }
+  },
+
+  plugins: ['truffle-source-verify']
+
 }
