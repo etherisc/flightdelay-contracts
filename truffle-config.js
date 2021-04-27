@@ -3,7 +3,8 @@ const HDWalletProvider = require('@truffle/hdwallet-provider')
 const { settings } = require('./package')
 const hdWalletConfig = {
   mnemonic: process.env.MNEMONIC,
-  providerOrUrl: process.env.HTTP_PROVIDER
+  providerOrUrl: process.env.HTTP_PROVIDER,
+  pollingInterval: 4000
 }
 
 module.exports = {
@@ -31,7 +32,8 @@ module.exports = {
       gas: 6600000,
       gasPrice: 2000000000,
       websockets: true,
-      skipDryRun: true
+      skipDryRun: true,
+      networkCheckTimeout: 999999
     }
 
   },
