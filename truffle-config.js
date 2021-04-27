@@ -1,6 +1,10 @@
-require('dotenv').config();
-const HDWalletProvider = require('@truffle/hdwallet-provider');
-const { settings } = require('./package');
+require('dotenv').config()
+const HDWalletProvider = require('@truffle/hdwallet-provider')
+const { settings } = require('./package')
+const hdWalletConfig = {
+  mnemonic: process.env.MNEMONIC,
+  providerOrUrl: process.env.HTTP_PROVIDER
+}
 
 module.exports = {
   migrations_directory: process.env.MIGRATIONS_DIRECTORY || './migrations',
@@ -9,63 +13,32 @@ module.exports = {
   networks: {
 
     development: {
-      provider: () => new HDWalletProvider(process.env.MNEMONIC, process.env.HTTP_PROVIDER),
-      host: process.env.TRUFFLE_HOST,
-      port: process.env.TRUFFLE_PORT,
-      network_id: process.env.TRUFFLE_NETWORK_ID,
+      provider: () => new HDWalletProvider(hdWalletConfig),
+      host: 'wss://xdai.poanetwork.dev',
+      port: 443,
+      network_id: 100,
       gas: process.env.TRUFFLE_GAS,
       gasPrice: process.env.TRUFFLE_GASPRICE,
       websockets: process.env.TRUFFLE_WEBSOCKETS,
-      skipDryRun: true,
+      skipDryRun: true
     },
 
-    staging: {
-      provider: () => new HDWalletProvider(process.env.MNEMONIC, process.env.HTTP_PROVIDER),
-      host: process.env.TRUFFLE_HOST,
-      port: process.env.TRUFFLE_PORT,
-      network_id: process.env.TRUFFLE_NETWORK_ID,
-      gas: process.env.TRUFFLE_GAS,
-      gasPrice: process.env.TRUFFLE_GASPRICE,
-      websockets: process.env.TRUFFLE_WEBSOCKETS,
-      skipDryRun: true,
-    },
-
-    coverage: {
-      host: 'localhost',
-      network_id: '*',
-      port: 8555, // the same port as in .solcover.js.
-      gas: 0xfffffffffff,
-      gasPrice: 0x01,
-    },
-
-    kovan: {
-      // MNEMONIC: BIP39 mnemonic, e.g. https://iancoleman.io/bip39/#english
-      // HTTP_PRODIVER: e.g. https://kovan.infura.io/<your-token>
-      provider: () => new HDWalletProvider(process.env.MNEMONIC, process.env.HTTP_PROVIDER),
-      network_id: 42,
-      confirmation: 2,
-      timeoutBlocks: 200,
-      skipDryRun: true,
+    xdai: {
+      provider: () => new HDWalletProvider(hdWalletConfig),
+      host: 'wss://xdai-rpc.etherisc.com',
+      port: 443,
+      network_id: 100,
       gas: 6600000,
-      gasPrice: 10 * (10 ** 9),
-    },
+      gasPrice: 2000000000,
+      websockets: true,
+      skipDryRun: true
+    }
 
-    rinkeby: {
-      // MNEMONIC: BIP39 mnemonic, e.g. https://iancoleman.io/bip39/#english
-      // HTTP_PRODIVER: e.g. https://rinkeby.infura.io/<your-token>
-      provider: () => new HDWalletProvider(process.env.MNEMONIC, process.env.HTTP_PROVIDER),
-      network_id: 4,
-      confirmation: 2,
-      timeoutBlocks: 200,
-      skipDryRun: true,
-      gas: 6600000,
-      gasPrice: 10 * (10 ** 9),
-    },
   },
 
   mocha: {
     timeout: 30000,
-    useColors: true,
+    useColors: true
   },
 
   compilers: {
@@ -74,10 +47,10 @@ module.exports = {
       settings: {
         optimizer: {
           enabled: true,
-          runs: 200,
+          runs: 200
         },
-        evmVersion: 'petersburg', // -> constantinople
-      },
-    },
-  },
-};
+        evmVersion: 'petersburg' // -> constantinople
+      }
+    }
+  }
+}
