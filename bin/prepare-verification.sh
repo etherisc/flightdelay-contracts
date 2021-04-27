@@ -7,5 +7,6 @@ function flatten {
    echo "Source code prepared for" $1
 }
 
-flatten ./contracts/FlightDelayEtheriscOracle.sol ./verification/FlightDelayEtheriscOracle.txt
-flatten ./contracts/FlightDelayMockup.sol ./verification/FlightDelayMockup.txt
+flatten ./contracts/FlightDelayChainlink.sol ./verification/FlightDelayChainlink.txt
+# flatten ./contracts/FlightDelayEtheriscOracle.sol ./verification/FlightDelayEtheriscOracle.txt
+# flatten ./contracts/FlightDelayMockup.sol ./verification/FlightDelayMockup.txt
