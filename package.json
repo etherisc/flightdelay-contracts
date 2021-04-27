@@ -37,7 +37,8 @@
     "prepare-verification": "echo 'Concat sources for verification on Etherscan'; ./bin/prepare-verification.sh",
     "prettier": "prettier --write contracts/**/*.sol",
     "test": "echo 'Test contracts'; truffle test",
-    "update-solc-version": "echo 'Update solc compiler version'; bin/run updateSolcVersion"
+    "update-solc-version": "echo 'Update solc compiler version'; bin/run updateSolcVersion",
+    "do-verify": "echo 'Verify Contracts on xDai'; bin/lib/doVerify.js"
   },
   "dependencies": {
     "@babel/core": "^7.12.10",
@@ -63,6 +64,7 @@
     "solidity-coverage": "git+https://github.com/kandrianov/solidity-coverage.git",
     "solidity-docgen": "^0.5.11",
     "truffle-flattener": "^1.5.0",
+    "truffle-source-verify": "0.0.6",
     "winston": "^3.3.3"
   }
 }
