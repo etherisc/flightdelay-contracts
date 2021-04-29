@@ -5,6 +5,18 @@ import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
 import "@etherisc/gif-contracts/contracts/Product.sol";
 import "./IRiskPool.sol";
 
+/***
+TODOS:
+- bpExternalKey unique wegen Requestmetadata
+- alle magic numbers konfigurierbar
+-
+
+
+
+***/
+
+
+
 contract FlightDelayEtheriscOracle is Product {
 
     // Dec 2020. This version is oracle agnostic i.e. it will work with Chainlink, Oraclize, ...
@@ -99,8 +111,8 @@ contract FlightDelayEtheriscOracle is Product {
     address payable public riskPool;
 
     constructor(address _productController)
-    public
-    Product(_productController, NAME, POLICY_FLOW)
+        public
+        Product(_productController, NAME, POLICY_FLOW)
     {}
 
     function setRiskPool(address payable _addr) public onlySandbox {
@@ -122,6 +134,7 @@ contract FlightDelayEtheriscOracle is Product {
     ) external payable {
 
         uint256 premium = getValue();
+        // TODO: bpExternalKey needs to be unique
         bytes32 bpExternalKey = keccak256(abi.encodePacked(msg.sender));
 
         // Validate input parameters

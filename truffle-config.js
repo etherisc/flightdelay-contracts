@@ -4,7 +4,8 @@ const { settings } = require('./package')
 const hdWalletConfig = {
   mnemonic: process.env.MNEMONIC,
   providerOrUrl: process.env.HTTP_PROVIDER,
-  pollingInterval: 4000
+  pollingInterval: 20000,
+  chainId: 100
 }
 
 module.exports = {
@@ -33,7 +34,8 @@ module.exports = {
       gasPrice: 2000000000,
       websockets: process.env.TRUFFLE_WEBSOCKETS,
       skipDryRun: true,
-      networkCheckTimeout: 999999
+      networkCheckTimeout: 999999,
+      timeoutBlocks: 200
     }
 
   },

@@ -3,6 +3,7 @@
 const fs = require('fs-jetpack')
 const { verify } = require('truffle-source-verify/lib')
 const { info } = require('../../io/logger')
+const path = require('path')
 
 /**
  *
@@ -17,15 +18,20 @@ const checkThenVerify = async (contract) => {
   return `${contract}: not deployed on xdai`
 }
 
+const findAllContracts = () => {
+  return fs.find('contracts', { matching: '*.sol', recursive: true })
+    .filter((item) => !item.match(/Migrations/))
+    .map((file) => path.basename(file).replace(/\.sol/, ''))
+}
+
 /**
  *
  * @returns {Promise<void>}
  */
 const doVerify = async () => {
-  const contracts = [
-    'FlightDelayChainLink'
-  ]
 
+  const contracts = findAllContracts()
+  console.log(contracts)
   const res = []
   for (let idx = 0; idx < contracts.length; idx += 1) {
     res.push(await checkThenVerify(contracts[idx]))
