@@ -100,7 +100,7 @@ contract FlightDelayOraclize is Product {
         bytes32 _currency,
         uint256[] calldata _payoutOptions,
         // BP
-        bytes32 _bpExternalKey
+        bytes32 _bpKey
     ) external onlySandbox {
         // Validate input parameters
         require(_premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
@@ -143,7 +143,7 @@ contract FlightDelayOraclize is Product {
 
         // Create new application
         uint256 applicationId = _newApplication(
-            _bpExternalKey,
+            _bpKey,
             _premium,
             _currency,
             _payoutOptions

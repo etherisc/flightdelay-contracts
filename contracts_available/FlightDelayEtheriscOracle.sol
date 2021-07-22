@@ -7,7 +7,7 @@ import "./IRiskPool.sol";
 
 /***
 TODOS:
-- bpExternalKey unique wegen Requestmetadata
+- bpKey unique wegen Requestmetadata
 - alle magic numbers konfigurierbar
 -
 
@@ -98,7 +98,7 @@ contract FlightDelayEtheriscOracle is Product {
         uint256 policyId;
         bytes32 riskId;
         uint256 premium;
-        bytes32 bpExternalKey;
+        bytes32 bpKey;
     }
 
     mapping(bytes32 => Risk) public risks;
@@ -134,8 +134,8 @@ contract FlightDelayEtheriscOracle is Product {
     ) external payable {
 
         uint256 premium = getValue();
-        // TODO: bpExternalKey needs to be unique
-        bytes32 bpExternalKey = keccak256(abi.encodePacked(msg.sender));
+        // TODO: bpKey needs to be unique
+        bytes32 bpKey = keccak256(abi.encodePacked(msg.sender));
 
         // Validate input parameters
         require(premium >= MIN_PREMIUM, "ERROR::INVALID_PREMIUM");
@@ -186,7 +186,7 @@ contract FlightDelayEtheriscOracle is Product {
             0
         );
 
-        oracleRequests[requestId] = RequestMetadata(0, 0, riskId, premium, bpExternalKey);
+        oracleRequests[requestId] = RequestMetadata(0, 0, riskId, premium, bpKey);
 
         emit LogRequestFlightStatistics(
             requestId,
@@ -209,7 +209,7 @@ contract FlightDelayEtheriscOracle is Product {
         uint256 policyId = rMeta.policyId;
         bytes32 riskId = rMeta.riskId;
         uint256 premium = rMeta.premium;
-        bytes32 bpExternalKey = rMeta.bpExternalKey;
+        bytes32 bpKey = rMeta.bpKey;
 
         (uint256 weight, uint256[5] memory calculatedPayouts) = calculatePayouts(
             premium,
@@ -225,7 +225,7 @@ contract FlightDelayEtheriscOracle is Product {
         dynPayouts.push(calculatedPayouts[4]);
         // Create new application
         applicationId = _newApplication(
-            bpExternalKey,
+            bpKey,
             premium,
             XDAI,
             dynPayouts

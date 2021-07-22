@@ -18,7 +18,7 @@ module.exports = {
       provider: () => new HDWalletProvider(hdWalletConfig),
       host: process.env.TRUFFLE_HOST,
       port: process.env.TRUFFLE_PORT,
-      network_id: 100,
+      network_id: process.env.TRUFFLE_NETWORK_ID,
       gas: process.env.TRUFFLE_GAS,
       gasPrice: process.env.TRUFFLE_GASPRICE,
       websockets: process.env.TRUFFLE_WEBSOCKETS,
