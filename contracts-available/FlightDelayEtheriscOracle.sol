@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: Apache 2.0
 pragma solidity 0.6.11;
 
-import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
-import "@etherisc/gif-contracts/contracts/Product.sol";
+import "@etherisc/gif-interface/contracts/Product.sol";
 
 /***
 TODOS:
 - bpKey unique wegen Requestmetadata
 - alle magic numbers konfigurierbar
--
-
-
-
 ***/
 
 
