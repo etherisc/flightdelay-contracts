@@ -10,14 +10,14 @@
 #
 contracts:
   - Migrations.sol
-  - FlightDelayChainlinkOracle.sol
+  - FlightDelayChainlink.sol
 
 #
 #   Migrations:
 #
 migrations:
   - 01_initial_migration.js
-  - 103_deploy_FlightDelayChainlinkOracle.js
+  - 101_deploy_FlightDelayChainlinkOracle.js
 
 #
 #   Tests:

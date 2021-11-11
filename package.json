@@ -37,7 +37,7 @@
     "@babel/eslint-parser": "^7.16.3",
     "@etherisc/gif-connect": "file:../../GIF/dip-platform/gif-connect",
     "@etherisc/gif-interface": "file:../../GIF/dip-platform/gif-interface",
-    "@etherisc/gif-tools": "^0.1.4",
+    "@etherisc/gif-tools": "^0.1.6",
     "@truffle/hdwallet-provider": "^1.0.37",
     "@uniswap/lib": "^4.0.1-alpha",
     "dotenv": "^8.2.0",
