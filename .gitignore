@@ -1,5 +1,7 @@
 coverage.json
 build
+contracts
+migrations
 node_modules
 verification
 .idea/*

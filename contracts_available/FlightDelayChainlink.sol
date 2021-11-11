@@ -7,6 +7,7 @@ contract FlightDelayChainlink is Product {
 
     bytes32 public constant NAME = "FlightDelayChainlink";
     bytes32 public constant VERSION = "0.1.3";
+    uint256 public constant DEFAULT_FLIGHTRATINGS_ORACLE_ID = 1;
 
     event LogRequestFlightRatings(uint256 requestId, bytes32 carrierFlightNumber, uint256 departureTime, uint256 arrivalTime);
     event LogRequestFlightStatus(uint256 requestId, bytes32 carrierFlightNumber, uint256 arrivalTime);
@@ -17,7 +18,7 @@ contract FlightDelayChainlink is Product {
     event LogRequestPayment(bytes32 bpKey, uint256 requestId);
     event LogUnexpectedStatus(bytes32 bpKey, uint256 requestId, bytes1 status, int256 delay);
 
-    event LogCallback(bytes32 _bytes32, uint256 _uint256);
+    event LogCallback(bytes32 _bytes, bytes _data);
 
 
     bytes32 public constant POLICY_FLOW = "PolicyFlowDefault";
@@ -69,9 +70,9 @@ contract FlightDelayChainlink is Product {
         Product(_productServiceAddress, NAME, POLICY_FLOW)
     {
         ratingsOracleType = "FlightRatings";
-        ratingsOracleId = 1;
+        ratingsOracleId = 3;
         statusesOracleType = "FlightStatuses";
-        statusesOracleId = 2;
+        statusesOracleId = 4;
     }
 
     function setOracles(
@@ -162,8 +163,6 @@ contract FlightDelayChainlink is Product {
             ratingsOracleId
         );
 
-//        oracleRequests[requestId] = bpKey;
-
         emit LogRequestFlightRatings(
             requestId,
             _carrierFlightNumber,
@@ -179,11 +178,8 @@ contract FlightDelayChainlink is Product {
     ) external onlyOracle {
         // Statistics: ['observations','late15','late30','late45','cancelled','diverted']
         uint256[6] memory _statistics = abi.decode(_response, (uint256[6]));
-
-
         (uint256 premium, uint256[5] memory payouts, /* address payable sender */, bytes32 riskId) =
         abi.decode(_getApplicationData(_bpKey), (uint256,uint256[5],address,bytes32));
-
         if (_statistics[0] < MIN_OBSERVATIONS) {
             _decline(_bpKey);
             // TODO: payback !

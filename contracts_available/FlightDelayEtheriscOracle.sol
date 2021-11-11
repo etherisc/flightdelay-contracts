@@ -3,7 +3,6 @@ pragma solidity 0.6.11;
 
 import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
 import "@etherisc/gif-contracts/contracts/Product.sol";
-import "./IRiskPool.sol";
 
 /***
 TODOS:
@@ -23,8 +22,6 @@ contract FlightDelayEtheriscOracle is Product {
 
     bytes32 public constant NAME = "FlightDelayEtheriscOracle";
     bytes32 public constant VERSION = "0.1.11";
-
-    IRiskPool RiskPool;
 
     event LogRequestFlightStatistics(
         uint256 requestId,

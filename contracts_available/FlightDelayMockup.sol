@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache 2.0
 pragma solidity 0.6.11;
 
-import "@etherisc/gif-contracts/contracts/services/InstanceOperatorService.sol";
-import "@etherisc/gif-contracts/contracts/Product.sol";
-import "./IRiskPool.sol";
+import "@etherisc/gif-interface/contracts/services/InstanceOperatorService.sol";
+import "@etherisc/gif-interface/contracts/Product.sol";
 
 contract FlightDelayMockup is Product {
 
