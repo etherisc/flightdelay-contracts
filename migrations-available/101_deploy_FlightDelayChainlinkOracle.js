@@ -2,7 +2,7 @@ const gif = require('@etherisc/gif-connect')
 
 const log = console
 const FlightDelayChainlink = artifacts.require('FlightDelayChainlink.sol')
-const truffleConfig = require('truffle-config')
+const truffleConfig = require('../truffle-config')
 
 module.exports = async (deployer, network /* , accounts */) => {
   const { gifRegistry, httpProvider } = truffleConfig.networks[network]
