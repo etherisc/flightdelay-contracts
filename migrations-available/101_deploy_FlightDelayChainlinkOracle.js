@@ -9,5 +9,12 @@ module.exports = async (deployer, network /* , accounts */) => {
   const gifInstance = new gif.Instance(httpProvider, gifRegistry)
   const productServiceAddress = await gifInstance.getProductServiceAddress()
   log.log(`ProductService Address: ${productServiceAddress}`)
-  await deployer.deploy(FlightDelayChainlink, productServiceAddress)
+  await deployer.deploy(
+    FlightDelayChainlink,
+    productServiceAddress,
+    web3.utils.asciiToHex('FlightRatings'),
+    5,
+    web3.utils.asciiToHex('FlightStatuses'),
+    6,
+  )
 }

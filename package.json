@@ -1,6 +1,6 @@
 {
   "name": "@etherisc/flightdelay-contracts",
-  "version": "1.0.0",
+  "version": "1.1.42",
   "description": "Etherisc FlightDelay Contracts",
   "repository": {
     "type": "git",
@@ -8,7 +8,7 @@
   },
   "license": "Apache-2.0",
   "settings": {
-    "solc": "0.6.11"
+    "solc": "0.7.6"
   },
   "files": [
     "contracts/*"
@@ -34,9 +34,10 @@
     "test": "echo 'Test contracts'; truffle test"
   },
   "dependencies": {
+    "axios": "^0.24.0",
     "@babel/eslint-parser": "^7.16.3",
-    "@etherisc/gif-connect": "file:../../GIF/dip-platform/gif-connect",
-    "@etherisc/gif-interface": "file:../../GIF/dip-platform/gif-interface",
+    "@etherisc/gif-connect": "^1.0.6",
+    "@etherisc/gif-interface": "^1.1.43",
     "@etherisc/gif-tools": "^0.1.6",
     "@truffle/hdwallet-provider": "^1.0.37",
     "@uniswap/lib": "^4.0.1-alpha",
