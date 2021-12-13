@@ -6,7 +6,7 @@ import "@etherisc/gif-interface/contracts/0.7/Product.sol";
 contract FlightDelayChainlink is Product {
 
     bytes32 public constant NAME = "FlightDelayChainlink";
-    bytes32 public constant VERSION = "0.1.4";
+    bytes32 public constant VERSION = "0.1.5";
 
     event LogRequestFlightRatings(uint256 requestId, bytes32 carrierFlightNumber, uint256 departureTime, uint256 arrivalTime, bytes32 riskId);
     event LogRequestFlightStatus(uint256 requestId, uint256 arrivalTime, bytes32 carrierFlightNumber, bytes32 departureYearMonthDay);
@@ -33,15 +33,16 @@ contract FlightDelayChainlink is Product {
 
     // uint256 public constant MIN_PREMIUM = 15 * 10 ** 18; // production
     // All amounts in cent = multiplier is 10 ** 16!
-    uint256 public constant MIN_PREMIUM = 0 * 10 ** 16; // for testing purposes
-    uint256 public constant MAX_PREMIUM = 15 * 10 ** 16;
-    uint256 public constant MAX_PAYOUT = 750  * 10 ** 16;
+    uint256 public constant MIN_PREMIUM = 15 * 10 ** 16; // for testing purposes
+    uint256 public constant MAX_PREMIUM = 150 * 10 ** 16; // in cent
+    uint256 public constant MAX_PAYOUT = 7500  * 10 ** 16; // in cent
     uint256 public constant MARGIN_PERCENT = 30;
     string public constant RATINGS_CALLBACK = "flightRatingsCallback";
     string public constant STATUSES_CALLBACK = "flightStatusCallback";
 
     // ['observations','late15','late30','late45','cancelled','diverted']
     uint8[6] public weightPattern = [0, 0, 0, 30, 50, 50];
+    uint8 public constant maxWeight = 50;
 
     // Maximum cumulated weighted premium per risk
     uint256 public constant MAX_TOTAL_PAYOUT = 3 * MAX_PAYOUT; // we accept max 3 passengers per flight
@@ -59,6 +60,9 @@ contract FlightDelayChainlink is Product {
     }
 
     mapping(bytes32 => Risk) public risks;
+    mapping(bytes32 => address) public bpKeyToAddress;
+    mapping(address => bytes32[]) public addressToBpKeys;
+    mapping(address => uint256) public addressToPolicyCount;
 
     uint256 public uniqueIndex;
     bytes32 public ratingsOracleType;
@@ -73,7 +77,6 @@ contract FlightDelayChainlink is Product {
         bytes32 _statusesOracleType,
         uint256 _statusesOracleId
     )
-        public
         Product(_productServiceAddress, NAME, POLICY_FLOW)
     {
         setOracles(_ratingsOracleType, _ratingsOracleId, _statusesOracleType, _statusesOracleId);
@@ -131,7 +134,7 @@ contract FlightDelayChainlink is Product {
             _departureTime >= block.timestamp + MIN_TIME_BEFORE_DEPARTURE,
             "ERROR:FDD-005:INVALID_ARRIVAL/DEPARTURE_TIME"
         );
-        /* end uncommented section *****************************************************/
+
         // Create risk if not exists
         bytes32 riskId = keccak256(abi.encode(_carrierFlightNumber, _departureTime, _arrivalTime));
         Risk storage risk = risks[riskId];
@@ -174,6 +177,36 @@ contract FlightDelayChainlink is Product {
             _arrivalTime,
             riskId
         );
+
+        /**
+         * Record bpKey to address relation for easier lookup.
+         */
+        bpKeyToAddress[bpKey] = msg.sender;
+        addressToBpKeys[msg.sender].push(bpKey);
+        addressToPolicyCount[msg.sender] += 1;
+
+    }
+
+    function checkApplication(
+        bytes32 _carrierFlightNumber,
+        uint256 _departureTime,
+        uint256 _arrivalTime,
+        uint256 _premium
+    )
+    external view
+    returns (uint256 errors)
+    {
+        // Validate input parameters
+        if (_premium >= MIN_PREMIUM) errors = errors | (uint256(1) << 0);
+        if (_premium <= MAX_PREMIUM) errors = errors | (uint256(1) << 1);
+        if (_arrivalTime > _departureTime) errors = errors | (uint256(1) << 2);
+        if (_arrivalTime <= _departureTime + MAX_FLIGHT_DURATION) errors = errors | (uint256(1) << 3);
+        if (_departureTime >= block.timestamp + MIN_TIME_BEFORE_DEPARTURE) errors = errors | (uint256(1) << 4);
+        bytes32 riskId = keccak256(abi.encode(_carrierFlightNumber, _departureTime, _arrivalTime));
+        Risk storage risk = risks[riskId];
+        if (_premium * risk.premiumMultiplier + risk.estimatedMaxTotalPayout >= MAX_TOTAL_PAYOUT) errors = errors | (uint256(1) << 5);
+
+        return errors;
     }
 
     function flightRatingsCallback(
@@ -210,7 +243,7 @@ contract FlightDelayChainlink is Product {
 
         // It's the first policy for this risk, we accept any premium
         if (risk.premiumMultiplier == 0) {
-            risk.premiumMultiplier = 100000 / weight;
+            risk.premiumMultiplier = maxWeight * 10000 / weight;
             risk.estimatedMaxTotalPayout = 0;
         }
         uint256 estimatedMaxPayout = premium * risk.premiumMultiplier;

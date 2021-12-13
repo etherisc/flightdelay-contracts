@@ -34,15 +34,15 @@
     "test": "echo 'Test contracts'; truffle test"
   },
   "dependencies": {
-    "axios": "^0.24.0",
     "@babel/eslint-parser": "^7.16.3",
     "@etherisc/gif-connect": "^1.0.6",
     "@etherisc/gif-interface": "^1.1.43",
     "@etherisc/gif-tools": "^0.1.6",
     "@truffle/hdwallet-provider": "^1.0.37",
     "@uniswap/lib": "^4.0.1-alpha",
+    "axios": "^0.24.0",
     "dotenv": "^8.2.0",
-    "openzeppelin-solidity": "^3.4.1",
+    "openzeppelin-solidity": "^3.4.2",
     "prettier": "^1.19.1",
     "prettier-plugin-solidity": "^1.0.0-beta.2",
     "rimraf": "^2.7.1",

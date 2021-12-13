@@ -12,7 +12,7 @@ module.exports = async (callback) => {
       web3.utils.asciiToHex('FlightRatings'),
       5,
       web3.utils.asciiToHex('FlightStatuses'),
-      6,
+      8,
     )
     info('Transaction: ', tx)
     callback()

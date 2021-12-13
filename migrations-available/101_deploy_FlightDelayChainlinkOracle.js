@@ -15,6 +15,6 @@ module.exports = async (deployer, network /* , accounts */) => {
     web3.utils.asciiToHex('FlightRatings'),
     5,
     web3.utils.asciiToHex('FlightStatuses'),
-    6,
+    8,
   )
 }
