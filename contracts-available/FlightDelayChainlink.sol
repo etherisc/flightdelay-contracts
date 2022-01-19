@@ -10,12 +10,12 @@ contract FlightDelayChainlink is Product {
 
     event LogRequestFlightRatings(uint256 requestId, bytes32 carrierFlightNumber, uint256 departureTime, uint256 arrivalTime, bytes32 riskId);
     event LogRequestFlightStatus(uint256 requestId, uint256 arrivalTime, bytes32 carrierFlightNumber, bytes32 departureYearMonthDay);
-    event LogRequestPayout(bytes32 bpKey, uint256 claimId, uint256 payoutId, uint256 amount);
+    event LogPayoutTransferred(bytes32 bpKey, uint256 claimId, uint256 payoutId, uint256 amount);
     event LogError(string error, uint256 index, uint256 stored, uint256 calculated);
     event LogUnprocessableStatus(bytes32 bpKey, uint256 requestId);
     event LogPolicyExpired(bytes32 bpKey);
     event LogRequestPayment(bytes32 bpKey, uint256 requestId);
-    event LogUnexpectedStatus(bytes32 bpKey, uint256 requestId, bytes1 status, int256 delay);
+    event LogUnexpectedStatus(bytes32 bpKey, uint256 requestId, bytes1 status, int256 delay, address customer);
 
     event LogCallback(bytes32 _bytes, bytes _data);
 
@@ -25,17 +25,19 @@ contract FlightDelayChainlink is Product {
     // Minimum observations for valid prediction
     uint256 public constant MIN_OBSERVATIONS = 10;
     // Minimum time before departure for applying
-    uint256 public constant MIN_TIME_BEFORE_DEPARTURE = 24 hours;
+    uint256 public constant MIN_TIME_BEFORE_DEPARTURE = 14 * 24 hours;
+    // Maximum time before departure for applying
+    uint256 public constant MAX_TIME_BEFORE_DEPARTURE = 90 * 24 hours;
     // Maximum duration of flight
     uint256 public constant MAX_FLIGHT_DURATION = 2 days;
     // Check for delay after .. minutes after scheduled arrival
-    uint256 public constant CHECK_OFFSET = 3 hours;
+    uint256 public constant CHECK_OFFSET = 1 hours;
 
     // uint256 public constant MIN_PREMIUM = 15 * 10 ** 18; // production
     // All amounts in cent = multiplier is 10 ** 16!
-    uint256 public constant MIN_PREMIUM = 15 * 10 ** 16; // for testing purposes
-    uint256 public constant MAX_PREMIUM = 150 * 10 ** 16; // in cent
-    uint256 public constant MAX_PAYOUT = 7500  * 10 ** 16; // in cent
+    uint256 public constant MIN_PREMIUM = 1500 * 10 ** 16; // for testing purposes
+    uint256 public constant MAX_PREMIUM = 1500 * 10 ** 16; // in cent
+    uint256 public constant MAX_PAYOUT = 75000  * 10 ** 16; // in cent
     uint256 public constant MARGIN_PERCENT = 30;
     string public constant RATINGS_CALLBACK = "flightRatingsCallback";
     string public constant STATUSES_CALLBACK = "flightStatusCallback";
@@ -45,7 +47,7 @@ contract FlightDelayChainlink is Product {
     uint8 public constant maxWeight = 50;
 
     // Maximum cumulated weighted premium per risk
-    uint256 public constant MAX_TOTAL_PAYOUT = 3 * MAX_PAYOUT; // we accept max 3 passengers per flight
+    uint256 public constant MAX_TOTAL_PAYOUT = 3 * MAX_PAYOUT; // Maximum risk per flight is 3x max payout.
 
     struct Risk {
         bytes32 carrierFlightNumber;
@@ -132,6 +134,10 @@ contract FlightDelayChainlink is Product {
         );
         require(
             _departureTime >= block.timestamp + MIN_TIME_BEFORE_DEPARTURE,
+            "ERROR:FDD-012:INVALID_ARRIVAL/DEPARTURE_TIME"
+        );
+        require(
+            _departureTime <= block.timestamp + MAX_TIME_BEFORE_DEPARTURE,
             "ERROR:FDD-005:INVALID_ARRIVAL/DEPARTURE_TIME"
         );
 
@@ -197,16 +203,24 @@ contract FlightDelayChainlink is Product {
     returns (uint256 errors)
     {
         // Validate input parameters
-        if (_premium >= MIN_PREMIUM) errors = errors | (uint256(1) << 0);
-        if (_premium <= MAX_PREMIUM) errors = errors | (uint256(1) << 1);
-        if (_arrivalTime > _departureTime) errors = errors | (uint256(1) << 2);
-        if (_arrivalTime <= _departureTime + MAX_FLIGHT_DURATION) errors = errors | (uint256(1) << 3);
-        if (_departureTime >= block.timestamp + MIN_TIME_BEFORE_DEPARTURE) errors = errors | (uint256(1) << 4);
+        if (_premium < MIN_PREMIUM) errors = errors | (uint256(1) << 0);
+        if (_premium > MAX_PREMIUM) errors = errors | (uint256(1) << 1);
+        if (_arrivalTime < _departureTime) errors = errors | (uint256(1) << 2);
+        if (_arrivalTime > _departureTime + MAX_FLIGHT_DURATION) errors = errors | (uint256(1) << 3);
+        if (_departureTime < block.timestamp + MIN_TIME_BEFORE_DEPARTURE) errors = errors | (uint256(1) << 4);
+        if (_departureTime > block.timestamp + MAX_TIME_BEFORE_DEPARTURE) errors = errors | (uint256(1) << 5);
         bytes32 riskId = keccak256(abi.encode(_carrierFlightNumber, _departureTime, _arrivalTime));
         Risk storage risk = risks[riskId];
-        if (_premium * risk.premiumMultiplier + risk.estimatedMaxTotalPayout >= MAX_TOTAL_PAYOUT) errors = errors | (uint256(1) << 5);
+        if (_premium * risk.premiumMultiplier + risk.estimatedMaxTotalPayout >= MAX_TOTAL_PAYOUT) errors = errors | (uint256(1) << 6);
 
         return errors;
+    }
+
+    function declineAndPayback(bytes32 _bpKey, address payable _customer, uint256 _premium)
+        internal
+    {
+        _decline(_bpKey);
+        _customer.transfer(_premium);
     }
 
     function flightRatingsCallback(
@@ -217,11 +231,10 @@ contract FlightDelayChainlink is Product {
 
         // Statistics: ['observations','late15','late30','late45','cancelled','diverted']
         uint256[6] memory _statistics = abi.decode(_response, (uint256[6]));
-        (uint256 premium, uint256[5] memory payouts, /* address payable sender */, bytes32 riskId) =
+        (uint256 premium, uint256[5] memory payouts, address payable customer, bytes32 riskId) =
         abi.decode(_getApplicationData(_bpKey), (uint256,uint256[5],address,bytes32));
         if (_statistics[0] < MIN_OBSERVATIONS) {
-            _decline(_bpKey);
-            // TODO: payback !
+            declineAndPayback(_bpKey, customer, premium);
             return;
         }
 
@@ -231,12 +244,12 @@ contract FlightDelayChainlink is Product {
         for (uint256 i = 0; i < 5; i++) {
             if (calculatedPayouts[i] > MAX_PAYOUT) {
                 emit LogError("ERROR:FDD-007:PAYOUT_GT_MAXPAYOUT", i, payouts[i], calculatedPayouts[i]);
-                _decline(_bpKey);
+                declineAndPayback(_bpKey, customer, premium);
                 return;
             }
             if (calculatedPayouts[i] != payouts[i]) {
                 emit LogError("ERROR:FDD-008:INVALID_PAYOUT_OPTION", i, payouts[i], calculatedPayouts[i]);
-                _decline(_bpKey);
+                declineAndPayback(_bpKey, customer, premium);
                 return;
             }
         }
@@ -282,7 +295,7 @@ contract FlightDelayChainlink is Product {
         onlyOracle
     {
         (bytes1 status, int256 delay) = abi.decode(_response, (bytes1, int256));
-        (/* uint256 premium */, uint256[5] memory payouts, /* address payable sender */, /* bytes32 riskId */) =
+        (/* uint256 premium */, uint256[5] memory payouts, address payable customer, /* bytes32 riskId */) =
         abi.decode(_getApplicationData(_bpKey), (uint256,uint256[5],address,bytes32));
 
         if (status != "L" && status != "A" && status != "C" && status != "D") {
@@ -292,26 +305,26 @@ contract FlightDelayChainlink is Product {
 
         if (status == "A") {
             // todo: active, reschedule oracle call + 45 min
-            emit LogUnexpectedStatus(_bpKey, _requestId, status, delay);
+            emit LogUnexpectedStatus(_bpKey, _requestId, status, delay, customer);
             return;
         }
 
         if (status == "C") {
-            resolvePayout(_bpKey, payouts[3]);
+            resolvePayout(_bpKey, payouts[3], customer);
         } else if (status == "D") {
-            resolvePayout(_bpKey, payouts[4]);
+            resolvePayout(_bpKey, payouts[4], customer);
         } else if (delay >= 15 && delay < 30) {
-            resolvePayout(_bpKey, payouts[0]);
+            resolvePayout(_bpKey, payouts[0], customer);
         } else if (delay >= 30 && delay < 45) {
-            resolvePayout(_bpKey, payouts[1]);
+            resolvePayout(_bpKey, payouts[1], customer);
         } else if (delay >= 45) {
-            resolvePayout(_bpKey, payouts[2]);
+            resolvePayout(_bpKey, payouts[2], customer);
         } else {
-            resolvePayout(_bpKey, 0);
+            resolvePayout(_bpKey, 0, customer);
         }
     }
 
-    function resolvePayout(bytes32 _bpKey, uint256 _payoutAmount) internal {
+    function resolvePayout(bytes32 _bpKey, uint256 _payoutAmount, address payable _customer) internal {
         if (_payoutAmount == 0) {
             _expire(_bpKey);
             emit LogPolicyExpired(_bpKey);
@@ -319,12 +332,8 @@ contract FlightDelayChainlink is Product {
             uint256 claimId = _newClaim(_bpKey, abi.encode(_payoutAmount));
             uint256 payoutId = _confirmClaim(_bpKey, claimId, abi.encode(_payoutAmount));
             _payout(_bpKey, payoutId, true, abi.encode(_payoutAmount));
-
-            emit LogRequestPayout(_bpKey, claimId, payoutId, _payoutAmount);
-            // TODO: perform actual payout.
-            // actual payment is performed in the wrapper contract
-            // address payable customerAddress = customers[_policyId];
-            // RiskPool.requestPayment(customerAddress, _payoutAmount);
+            _customer.transfer(_payoutAmount);
+            emit LogPayoutTransferred(_bpKey, claimId, payoutId, _payoutAmount);
         }
     }
 
@@ -361,12 +370,13 @@ contract FlightDelayChainlink is Product {
         }
     }
 
-    function faucet() // for testing only
+    function faucet(uint256 _amount) // for testing only
         public
         onlyOwner
     {
+        require(_amount <= address(this).balance);
         address payable receiver;
         receiver = payable(owner());
-        receiver.transfer(address(this).balance);
+        receiver.transfer(_amount);
     }
 }
