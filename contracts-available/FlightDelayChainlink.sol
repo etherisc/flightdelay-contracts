@@ -6,7 +6,7 @@ import "@etherisc/gif-interface/contracts/0.7/Product.sol";
 contract FlightDelayChainlink is Product {
 
     bytes32 public constant NAME = "FlightDelayChainlink";
-    bytes32 public constant VERSION = "0.1.5";
+    bytes32 public constant VERSION = "0.1.6";
 
     event LogRequestFlightRatings(uint256 requestId, bytes32 carrierFlightNumber, uint256 departureTime, uint256 arrivalTime, bytes32 riskId);
     event LogRequestFlightStatus(uint256 requestId, uint256 arrivalTime, bytes32 carrierFlightNumber, bytes32 departureYearMonthDay);
